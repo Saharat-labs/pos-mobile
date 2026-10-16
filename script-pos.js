@@ -1344,9 +1344,9 @@ function renderCompareReport(){
   const af=document.getElementById('cmp-a-from')?.value, at=document.getElementById('cmp-a-to')?.value;
   const bf=document.getElementById('cmp-b-from')?.value, bt=document.getElementById('cmp-b-to')?.value;
   const a=periodSummary(af,at), b=periodSummary(bf,bt);
-  const pct=(x,y)=>y===0?(x===0?'0':'+∞'):(((x-y)/y*100).toFixed(1));
+  const pct=(x,y)=>y===0?(x===0?0:null):((x-y)/y*100);
   const c=document.getElementById('cmp-stats'); if(!c) return;
-  const mkDiff=v=>{const n=+v; return `<span style="font-size:11px;color:${n>=0?'var(--green)':'var(--red)'}">${n>=0?'▲':'▼'}${Math.abs(n)}%</span>`;};
+  const mkDiff=v=>{ if(v===null||v===undefined||!isFinite(v)) return '<span style="font-size:11px;color:var(--text-muted)">—</span>'; const n=+v; return `<span style="font-size:11px;color:${n>=0?'var(--green)':'var(--red)'}">${n>=0?'▲':'▼'}${Math.abs(n).toFixed(1)}%</span>`; };
   c.innerHTML=`
     <div class="stat-card"><div class="stat-label">ยอดขาย A</div><div class="stat-value text-teal">${fmt(a.total)}</div>${mkDiff(pct(a.total,b.total))}</div>
     <div class="stat-card"><div class="stat-label">ยอดขาย B</div><div class="stat-value">${fmt(b.total)}</div></div>
