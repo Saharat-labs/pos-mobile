@@ -185,7 +185,8 @@ let posCurrentCat = '';
 // ═══════════════════════════════════════════════
 const fmt = n => '฿' + (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN= n => (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
-const today= ()=> new Date().toISOString().slice(0,10);
+const ymd  = d => { const x=new Date(d); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const today= ()=> ymd(new Date());
 const uid  = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const thDate= d=> d ? new Date(d).toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'}) : '-';
 const thTime= d=> d ? new Date(d).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -1239,7 +1240,7 @@ function switchReportTab(tab){
 function setDateRange(range,which){
   let from='',to=today();
   if(range==='today') from=today();
-  else if(range==='week'){const d=new Date();d.setDate(d.getDate()-6);from=d.toISOString().slice(0,10);}
+  else if(range==='week'){const d=new Date();d.setDate(d.getDate()-6);from=ymd(d);}
   else if(range==='month') from=today().slice(0,7)+'-01';
   else if(range==='year') from=today().slice(0,4)+'-01-01';
   if(which==='sale'){
@@ -1323,13 +1324,13 @@ function setCompareRange(mode){
   if(mode==='mom'){
     at.value=today(); af.value=today().slice(0,7)+'-01';
     const d=new Date(); d.setDate(1); d.setDate(d.getDate()-1);
-    bt.value=d.toISOString().slice(0,10);
+    bt.value=ymd(d);
     bf.value=bt.value.slice(0,7)+'-01';
   } else if(mode==='wow'){
     at.value=today();
-    const d1=new Date(); d1.setDate(d1.getDate()-6); af.value=d1.toISOString().slice(0,10);
-    const d2=new Date(); d2.setDate(d2.getDate()-7); bt.value=d2.toISOString().slice(0,10);
-    const d3=new Date(); d3.setDate(d3.getDate()-13); bf.value=d3.toISOString().slice(0,10);
+    const d1=new Date(); d1.setDate(d1.getDate()-6); af.value=ymd(d1);
+    const d2=new Date(); d2.setDate(d2.getDate()-7); bt.value=ymd(d2);
+    const d3=new Date(); d3.setDate(d3.getDate()-13); bf.value=ymd(d3);
   }
   renderCompareReport();
 }
@@ -1548,7 +1549,7 @@ function importExcel(event) {
         let expiry = '';
         if (expiryRaw) {
           const d = new Date(expiryRaw);
-          if (!isNaN(d)) expiry = d.toISOString().slice(0,10);
+          if (!isNaN(d)) expiry = ymd(d);
         }
         
         if (!name || !barcode) return;
