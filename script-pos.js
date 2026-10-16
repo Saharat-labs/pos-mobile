@@ -1,9 +1,20 @@
 // ═══════════════════════════════════════════════
 // DATA STORE
 // ══════════════
+let _storageWarned = false;
 const DB = {
   get: (k, d=[]) => { try { return JSON.parse(localStorage.getItem('qpos_'+k)) ?? d; } catch { return d; } },
-  set: (k, v) => localStorage.setItem('qpos_'+k, JSON.stringify(v)),
+  set: (k, v) => {
+    try { localStorage.setItem('qpos_'+k, JSON.stringify(v)); return true; }
+    catch (err) {
+      if (!_storageWarned) {
+        _storageWarned = true;
+        console.error('บันทึกข้อมูลลงเครื่องไม่สำเร็จ:', err);
+        if (typeof toast === 'function') toast('บันทึกข้อมูลไม่สำเร็จ — พื้นที่จัดเก็บเต็มหรือถูกปิดกั้น', 'error');
+      }
+      return false;
+    }
+  },
 };
 
 let products = DB.get('products', []);
@@ -190,9 +201,11 @@ const save = ()=>{
 };
 
 function toast(msg, type='success') {
+  const c = document.getElementById('toast-container');
+  if (!c) { console.warn(msg); return; }
   const t = document.createElement('div');
   t.className = `toast toast-${type}`; t.textContent = msg;
-  document.getElementById('toast-container').appendChild(t);
+  c.appendChild(t);
   setTimeout(()=>t.remove(), 2800);
 }
 
