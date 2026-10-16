@@ -1842,6 +1842,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   setActiveNav(currentPage);
   runPageInit(currentPage);
 
+  // ซ่อนปุ่ม "เพิ่มจากรายการสินค้ากลาง" ถ้าโปรเจกต์ไม่มีไฟล์ master-products.js
+  if (typeof MASTER_PRODUCTS === 'undefined') {
+    const mb = document.getElementById('btn-master-search');
+    if (mb) mb.style.display = 'none';
+  }
+
   const expWarn=new Date(); expWarn.setDate(expWarn.getDate()+settings.expiryDays);
   const alerts=products.filter(p=>p.stock<=settings.lowStock||(p.expiry&&new Date(p.expiry)<=expWarn));
   const nb=document.getElementById('nav-alert-badge');
