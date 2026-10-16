@@ -241,7 +241,7 @@ function updateCategorySelects() {
   if (filterEl) {
     const current = filterEl.value;
     filterEl.innerHTML = '<option value="">ทุกหมวด</option>';
-    cats.forEach(c => filterEl.innerHTML += `<option value="${c}">${c}</option>`);
+    cats.forEach(c => filterEl.innerHTML += `<option value="${esc(c)}">${esc(c)}</option>`);
     if (current) filterEl.value = current;
   }
 }
@@ -1307,7 +1307,7 @@ function renderSalesReport(){
   const tops=Object.entries(pm).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
   document.getElementById('rs-top-list').innerHTML=tops.map(([n,v],i)=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div><span style="color:var(--text-muted);font-size:11px">#${i+1}</span> ${n}</div>
+      <div><span style="color:var(--text-muted);font-size:11px">#${i+1}</span> ${esc(n)}</div>
       <div style="text-align:right"><div style="font-family:var(--mono);font-size:13px;font-weight:600">${fmt(v.total)}</div><div style="font-size:10px;color:var(--green)">${v.qty} ชิ้น</div></div>
     </div>`).join('')||'<div class="empty-state" style="padding:20px"><div class="empty-text">ไม่มีข้อมูล</div></div>';
 
