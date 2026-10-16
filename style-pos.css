@@ -782,3 +782,25 @@ tr:active td { background: var(--surface2); }
   flex-shrink: 0;
   min-height: 40px;
 }
+
+/* ══════════════════════════════════════════
+   PRINT — พิมพ์เฉพาะใบเสร็จ
+═══════════════════════════════════════════ */
+@media print {
+  body * { visibility: hidden !important; }
+  #modal-receipt, #modal-receipt * { visibility: visible !important; }
+  #modal-receipt {
+    position: absolute; inset: 0; display: block !important;
+    background: #fff !important; overflow: visible !important;
+  }
+  #modal-receipt .modal {
+    max-width: none; max-height: none; overflow: visible;
+    border: none !important; box-shadow: none !important;
+    background: #fff !important; padding: 0 !important;
+  }
+  #modal-receipt .modal-handle,
+  #modal-receipt .modal-title,
+  #modal-receipt .modal-footer { display: none !important; }
+  #modal-receipt .receipt { box-shadow: none !important; }
+  @page { margin: 8mm; }
+}
