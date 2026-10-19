@@ -1,0 +1,43 @@
+"""Application configuration."""
+
+from pathlib import Path
+from typing import Optional, List
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Application settings."""
+
+    # App
+    APP_NAME: str = "POS-MOBILE API"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = True
+
+    # Database
+    DATABASE_URL: str = "sqlite+aiosqlite:///./pos_mobile.db"
+    DATABASE_ECHO: bool = False
+
+    # CORS
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "file://",
+        "null",
+    ]
+
+    # Server
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
+    # Data directory (for Termux/Android)
+    DATA_DIR: Path = Path("/data/data/com.termux/files/home/pos-mobile-data")
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+settings = Settings()
+
+# Ensure data directory exists
+settings.DATA_DIR.mkdir(parents=True, exist_ok=True)

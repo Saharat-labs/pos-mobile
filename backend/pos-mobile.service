@@ -1,0 +1,17 @@
+[Unit]
+Description=POS-MOBILE Backend API
+After=network.target
+
+[Service]
+Type=simple
+User=termux
+WorkingDirectory=/data/data/com.termux/files/home/projects/pos-mobile/backend
+Environment=PATH=/data/data/com.termux/files/home/projects/pos-mobile/backend/venv/bin
+ExecStart=/data/data/com.termux/files/home/projects/pos-mobile/backend/venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
