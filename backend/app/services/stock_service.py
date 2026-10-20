@@ -29,19 +29,12 @@ class StockMovementService:
         )
         self.db.add(movement)
 
-        # Update product stock
+        # Update product stock (internal, no duplicate movement)
         qty_change = data.quantity
         if data.movement_type in ("out", "waste"):
             qty_change = -data.quantity
 
-        await self.product_service.update_stock(
-            product_id=data.product_id,
-            quantity=qty_change,
-            movement_type=data.movement_type,
-            reference_type=data.reference_type,
-            reference_id=data.reference_id,
-            notes=data.notes,
-        )
+        await self.product_service._update_stock_only(data.product_id, qty_change)
 
         await self.db.commit()
         await self.db.refresh(movement)

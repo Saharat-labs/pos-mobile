@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.hold_bill_service import HoldBillService
-from app.schemas import HoldBillCreate, HoldBillResponse
+from app.schemas import HoldBillCreate, HoldBillResponse, HoldBillListResponse
+from app.api.validation import validate_page_params, MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/hold-bills", tags=["Hold Bills"])
 
@@ -20,15 +21,16 @@ async def create_hold_bill(data: HoldBillCreate, service: HoldBillService = Depe
     return await service.create(data)
 
 
-@router.get("", response_model=List[HoldBillResponse])
+@router.get("", response_model=HoldBillListResponse)
 async def list_hold_bills(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     service: HoldBillService = Depends(get_service),
 ):
     """List hold bills."""
+    page, page_size = validate_page_params(page, page_size)
     items, total = await service.list(page, page_size)
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
+    return HoldBillListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{bill_id}", response_model=HoldBillResponse)

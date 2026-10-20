@@ -1,0 +1,67 @@
+# POS-MOBILE .dockerignore
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+pip-wheel-metadata/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+*.egg-info/
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backup
+backup/
+*.backup
+*_backup_*
+
+# Test
+tests/
+.pytest_cache/
+
+# Documentation (keep only what's needed)
+docs/
+*.md
+!README.md
+!USER_GUIDE.md
+
+# CI/CD
+.github/
+
+# Misc
+nginx.conf
+docker-compose.yml
+.dockerignore

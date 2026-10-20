@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    # Auth (ปิดไว้เป็นค่า default — เปิดใน .env เมื่อต้องการ)
+    AUTH_ENABLED: bool = False
+    API_KEY: str = ""
+    JWT_SECRET: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
     # Data directory (for Termux/Android)
     DATA_DIR: Path = Path("/data/data/com.termux/files/home/pos-mobile-data")
 

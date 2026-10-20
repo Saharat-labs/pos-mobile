@@ -9,6 +9,7 @@ from decimal import Decimal
 # ==================== Product Schemas ====================
 
 class ProductBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     code: str = Field(..., max_length=50)
     barcode: Optional[str] = Field(None, max_length=100)
     name: str = Field(..., max_length=200)
@@ -94,6 +95,7 @@ class SaleItemResponse(SaleItemBase):
 
 
 class SaleBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     customer_name: Optional[str] = Field(None, max_length=200)
     customer_phone: Optional[str] = Field(None, max_length=20)
     discount: Decimal = Field(0, ge=0)
@@ -177,6 +179,7 @@ class PurchaseItemResponse(PurchaseItemBase):
 
 
 class PurchaseBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     supplier_name: Optional[str] = Field(None, max_length=200)
     supplier_phone: Optional[str] = Field(None, max_length=20)
     status: str = Field("pending", pattern="^(pending|received|cancelled)$")
@@ -251,6 +254,7 @@ class DebtPaymentResponse(DebtPaymentBase):
 
 
 class DebtBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     customer_name: str = Field(..., max_length=200)
     customer_phone: Optional[str] = Field(None, max_length=20)
     notes: Optional[str] = None
@@ -299,6 +303,7 @@ class DebtListResponse(BaseModel):
 # ==================== Expense Schemas ====================
 
 class ExpenseBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     category: str = Field(..., max_length=100)
     description: str = Field(..., max_length=500)
     amount: Decimal = Field(..., gt=0)
@@ -347,6 +352,7 @@ class ExpenseListResponse(BaseModel):
 # ==================== Stock Movement Schemas ====================
 
 class StockMovementBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     product_id: int
     movement_type: str = Field(..., pattern="^(in|out|adjust|waste|return)$")
     quantity: int = Field(..., gt=0)
@@ -370,9 +376,20 @@ class StockMovementResponse(StockMovementBase):
         from_attributes = True
 
 
+class StockMovementListResponse(BaseModel):
+    items: List[StockMovementResponse]
+    total: int
+    page: int
+    page_size: int
+
+    class Config:
+        from_attributes = True
+
+
 # ==================== Hold Bill Schemas ====================
 
 class HoldBillBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     items: str  # JSON string
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
@@ -399,9 +416,20 @@ class HoldBillResponse(HoldBillBase):
         from_attributes = True
 
 
+class HoldBillListResponse(BaseModel):
+    items: List[HoldBillResponse]
+    total: int
+    page: int
+    page_size: int
+
+    class Config:
+        from_attributes = True
+
+
 # ==================== Setting Schemas ====================
 
 class SettingBase(BaseModel):
+    store_id: int = Field(..., gt=0)
     key: str = Field(..., max_length=100)
     value: str
     description: Optional[str] = None
@@ -455,6 +483,57 @@ class CategoryMappingResponse(CategoryMappingBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ==================== Store Schemas ====================
+
+class StoreBase(BaseModel):
+    name: str = Field(..., max_length=200)
+    code: str = Field(..., max_length=50)
+    address: Optional[str] = Field(None, max_length=500)
+    phone: Optional[str] = Field(None, max_length=20)
+    tax_id: Optional[str] = Field(None, max_length=50)
+    is_active: bool = True
+    is_default: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class StoreCreate(StoreBase):
+    pass
+
+
+class StoreUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=200)
+    code: Optional[str] = Field(None, max_length=50)
+    address: Optional[str] = Field(None, max_length=500)
+    phone: Optional[str] = Field(None, max_length=20)
+    tax_id: Optional[str] = Field(None, max_length=50)
+    is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StoreResponse(StoreBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StoreListResponse(BaseModel):
+    items: List[StoreResponse]
+    total: int
+    page: int
+    page_size: int
 
     class Config:
         from_attributes = True

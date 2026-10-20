@@ -13,49 +13,53 @@ class SettingService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get(self, key: str) -> Optional[Setting]:
-        """Get setting by key."""
-        result = await self.db.execute(select(Setting).where(Setting.key == key))
+    async def get(self, key: str, store_id: int = 1) -> Optional[Setting]:
+        """Get setting by key (scoped to store)."""
+        result = await self.db.execute(
+            select(Setting).where(Setting.key == key, Setting.store_id == store_id)
+        )
         return result.scalar_one_or_none()
 
-    async def get_value(self, key: str, default: str = "") -> str:
+    async def get_value(self, key: str, default: str = "", store_id: int = 1) -> str:
         """Get setting value or default."""
-        setting = await self.get(key)
+        setting = await self.get(key, store_id)
         return setting.value if setting else default
 
-    async def set(self, key: str, value: str, description: str = None) -> Setting:
-        """Set setting value (upsert)."""
-        setting = await self.get(key)
+    async def set(self, key: str, value: str, description: str = None, store_id: int = 1) -> Setting:
+        """Set setting value (upsert, scoped to store)."""
+        setting = await self.get(key, store_id)
         if setting:
             setting.value = value
             if description:
                 setting.description = description
         else:
-            setting = Setting(key=key, value=value, description=description)
+            setting = Setting(key=key, value=value, description=description, store_id=store_id)
             self.db.add(setting)
         await self.db.commit()
         await self.db.refresh(setting)
         return setting
 
-    async def list(self) -> List[Setting]:
-        """List all settings."""
-        result = await self.db.execute(select(Setting).order_by(Setting.key))
+    async def list(self, store_id: int = 1) -> List[Setting]:
+        """List all settings (scoped to store)."""
+        result = await self.db.execute(
+            select(Setting).where(Setting.store_id == store_id).order_by(Setting.key)
+        )
         return result.scalars().all()
 
-    async def delete(self, key: str) -> bool:
-        """Delete setting."""
-        setting = await self.get(key)
+    async def delete(self, key: str, store_id: int = 1) -> bool:
+        """Delete setting (scoped to store)."""
+        setting = await self.get(key, store_id)
         if not setting:
             return False
         await self.db.delete(setting)
         await self.db.commit()
         return True
 
-    async def bulk_set(self, settings: List[SettingCreate]) -> List[Setting]:
+    async def bulk_set(self, settings: List[SettingCreate], store_id: int = 1) -> List[Setting]:
         """Bulk set settings."""
         result = []
         for s in settings:
-            setting = await self.set(s.key, s.value, s.description)
+            setting = await self.set(s.key, s.value, s.description, store_id)
             result.append(setting)
         return result
 

@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 
+import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db, close_db
 from app.api import api_router
+from app.api import websocket as ws
 
 
 @asynccontextmanager
@@ -32,6 +34,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +46,9 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router)
+
+# Include WebSocket router directly on app
+app.include_router(ws.router)
 
 
 @app.get("/")

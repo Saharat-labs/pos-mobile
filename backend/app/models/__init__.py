@@ -6,7 +6,39 @@ from sqlalchemy import (
     Integer, String, Text, Numeric, DateTime, Boolean, ForeignKey, Index, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.database import Base
+from app.base import Base
+
+
+class Store(Base):
+    """Store model for multi-store support."""
+
+    __tablename__ = "stores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    tax_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)  # Default store for existing data
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    products: Mapped[list["Product"]] = relationship("Product", back_populates="store")
+    sales: Mapped[list["Sale"]] = relationship("Sale", back_populates="store")
+    purchases: Mapped[list["Purchase"]] = relationship("Purchase", back_populates="store")
+    debts: Mapped[list["Debt"]] = relationship("Debt", back_populates="store")
+    expenses: Mapped[list["Expense"]] = relationship("Expense", back_populates="store")
+    stock_movements: Mapped[list["StockMovement"]] = relationship("StockMovement", back_populates="store")
+    hold_bills: Mapped[list["HoldBill"]] = relationship("HoldBill", back_populates="store")
+    settings: Mapped[list["Setting"]] = relationship("Setting", back_populates="store")
+    users: Mapped[list["User"]] = relationship("User", back_populates="store")
+
+    __table_args__ = (
+        Index("ix_stores_is_default", "is_default"),
+    )
 
 
 class Product(Base):
@@ -15,6 +47,7 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     barcode: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -31,6 +64,7 @@ class Product(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="products")
     sale_items: Mapped[list["SaleItem"]] = relationship("SaleItem", back_populates="product")
     purchase_items: Mapped[list["PurchaseItem"]] = relationship("PurchaseItem", back_populates="product")
     stock_movements: Mapped[list["StockMovement"]] = relationship("StockMovement", back_populates="product")
@@ -47,6 +81,7 @@ class Sale(Base):
     __tablename__ = "sales"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     bill_no: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     customer_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -63,6 +98,7 @@ class Sale(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="sales")
     items: Mapped[list["SaleItem"]] = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
 
 
@@ -93,6 +129,7 @@ class Purchase(Base):
     __tablename__ = "purchases"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     po_no: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     supplier_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     supplier_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -105,6 +142,7 @@ class Purchase(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="purchases")
     items: Mapped[list["PurchaseItem"]] = relationship("PurchaseItem", back_populates="purchase", cascade="all, delete-orphan")
 
 
@@ -135,6 +173,7 @@ class Debt(Base):
     __tablename__ = "debts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     customer_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     total_debt: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
@@ -146,6 +185,7 @@ class Debt(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="debts")
     payments: Mapped[list["DebtPayment"]] = relationship("DebtPayment", back_populates="debt", cascade="all, delete-orphan")
 
 
@@ -171,6 +211,7 @@ class Expense(Base):
     __tablename__ = "expenses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     category: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -179,6 +220,9 @@ class Expense(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="expenses")
 
     __table_args__ = (
         Index("ix_expenses_date_category", "date", "category"),
@@ -191,6 +235,7 @@ class StockMovement(Base):
     __tablename__ = "stock_movements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     movement_type: Mapped[str] = mapped_column(String(20), nullable=False)  # in, out, adjust, waste, return
     quantity: Mapped[int] = mapped_column(Integer, default=0)
@@ -200,6 +245,7 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="stock_movements")
     product: Mapped["Product"] = relationship("Product", back_populates="stock_movements")
 
     __table_args__ = (
@@ -213,6 +259,7 @@ class HoldBill(Base):
     __tablename__ = "hold_bills"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     bill_no: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     items: Mapped[str] = mapped_column(Text, nullable=False)  # JSON string
     customer_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
@@ -224,6 +271,9 @@ class HoldBill(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="hold_bills")
+
 
 class Setting(Base):
     """Application settings model."""
@@ -231,13 +281,17 @@ class Setting(Base):
     __tablename__ = "settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    key: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="settings")
+
     __table_args__ = (
-        UniqueConstraint("key", name="uq_settings_key"),
+        UniqueConstraint("key", "store_id", name="uq_settings_key_store"),
     )
 
 
@@ -251,3 +305,65 @@ class CategoryMapping(Base):
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class User(Base):
+    """User model for authentication."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="staff")  # admin, manager, staff
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    store: Mapped["Store"] = relationship("Store", back_populates="users")
+    api_keys: Mapped[list["APIKey"]] = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
+
+class APIKey(Base):
+    """API Key model for service-to-service authentication."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(20), nullable=False)  # First 8 chars for display
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    scopes: Mapped[str] = mapped_column(Text, default="read write")  # Space-separated scopes
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="api_keys")
+
+
+class RefreshToken(Base):
+    """Refresh token model for JWT token rotation."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")

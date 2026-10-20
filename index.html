@@ -7,6 +7,13 @@
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js" integrity="sha512-SIMGYRUjwY8+gKg7nn9EItdD8LCADSDfJNutF9TPrvEo86sQmFMh6MyralfIyhADlajSxqc7G0gs7+MwWF/ogQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <link rel="stylesheet" href="style-pos.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d9488">
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
 </head>
 <body>
 <header class="header-app">
@@ -321,6 +328,12 @@
   🛒
   <span id="cart-count-badge">0</span>
 </button>
+
+<!-- ── OFFLINE INDICATOR ────────────────────────── -->
+<div id="offline-indicator" class="offline-indicator hidden">
+  <span class="offline-icon">⚠️</span>
+  <span class="offline-text">ออฟไลน์ - ข้อมูลจะซิงค์เมื่อกลับออนไลน์</span>
+</div>
 
 <!-- ── BOTTOM NAV ─────────────────────────────── -->
 <nav id="bottom-nav">

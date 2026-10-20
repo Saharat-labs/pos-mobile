@@ -1257,9 +1257,21 @@ function filterByDate(list,fromId,toId,df='date'){
   const from=document.getElementById(fromId)?.value;
   const to=document.getElementById(toId)?.value;
   return list.filter(x=>{
-    const d=(x[df]||'').slice(0,10);
-    if(from&&d<from) return false;
-    if(to&&d>to) return false;
+    const raw=(x[df]||'').slice(0,10);
+    if(!raw) return false;
+    // Parse as local date (YYYY-MM-DD) to avoid timezone issues
+    const parts=raw.split('-');
+    const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
+    if(from){
+      const fp=from.split('-');
+      const fromDate=new Date(+fp[0], +fp[1]-1, +fp[2]);
+      if(d<fromDate) return false;
+    }
+    if(to){
+      const tp=to.split('-');
+      const toDate=new Date(+tp[0], +tp[1]-1, +tp[2]);
+      if(d>toDate) return false;
+    }
     return true;
   });
 }
@@ -1335,7 +1347,23 @@ function setCompareRange(mode){
   renderCompareReport();
 }
 function periodSummary(from,to){
-  const list=sales.filter(s=>{const d=s.date.slice(0,10); return (!from||d>=from)&&(!to||d<=to);});
+  const list=sales.filter(s=>{
+    const raw=(s.date||'').slice(0,10);
+    if(!raw) return false;
+    const parts=raw.split('-');
+    const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
+    if(from){
+      const fp=from.split('-');
+      const fromDate=new Date(+fp[0], +fp[1]-1, +fp[2]);
+      if(d<fromDate) return false;
+    }
+    if(to){
+      const tp=to.split('-');
+      const toDate=new Date(+tp[0], +tp[1]-1, +tp[2]);
+      if(d>toDate) return false;
+    }
+    return true;
+  });
   const total=list.reduce((s,x)=>s+x.total,0);
   const profit=list.reduce((s,x)=>s+x.items.reduce((ss,i)=>ss+(i.subtotal-(i.cost||0)*i.qty),0),0);
   return {list,total,profit,bills:list.length,avg:list.length?total/list.length:0};
@@ -1834,6 +1862,38 @@ function seedDemoData(){
 }
 
 // ═══════════════════════════════════════════════
+// ONLINE / OFFLINE DETECTION
+// ═══════════════════════════════════════════════
+function initOnlineDetection() {
+  const indicator = document.getElementById('offline-indicator');
+  if (!indicator) return;
+
+  function updateOnlineStatus() {
+    if (navigator.onLine) {
+      indicator.classList.add('hidden');
+      document.body.classList.remove('offline-active');
+    } else {
+      indicator.classList.remove('hidden');
+      document.body.classList.add('offline-active');
+    }
+  }
+
+  // Initial check
+  updateOnlineStatus();
+
+  // Listen for online/offline events
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+
+  // Periodic check (every 30 seconds) to catch cases where browser doesn't fire events
+  setInterval(() => {
+    fetch('/api/v1/sync/health', { method: 'HEAD', cache: 'no-store' })
+      .then(() => { if (!navigator.onLine) updateOnlineStatus(); })
+      .catch(() => { if (navigator.onLine) updateOnlineStatus(); });
+  }, 30000);
+}
+
+// ═══════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
@@ -1841,6 +1901,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   updateHeaderSubtitle();
   setActiveNav(currentPage);
   runPageInit(currentPage);
+  initOnlineDetection();
 
   // ซ่อนปุ่ม "เพิ่มจากรายการสินค้ากลาง" ถ้าโปรเจกต์ไม่มีไฟล์ master-products.js
   if (typeof MASTER_PRODUCTS === 'undefined') {

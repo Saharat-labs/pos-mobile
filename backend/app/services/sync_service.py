@@ -55,7 +55,7 @@ class SyncService:
         # Sync sales
         if data.sales:
             for sale_data in data.sales:
-                await self.sales.create(sale_data)
+                await self.sales.create(sale_data, store_id=1)  # TODO: multi-store sync (Phase 2)
             counts["sales"] = len(data.sales)
 
         # Sync purchases
@@ -96,9 +96,9 @@ class SyncService:
 
     async def full_backup(self) -> dict:
         """Create full backup of all data."""
-        # Get all data
-        products, _ = await self.products.list(page=1, page_size=10000, active_only=False)
-        sales, _ = await self.sales.list(page=1, page_size=10000)
+        # Get all data (default store for now — TODO: multi-store backup in Phase 2)
+        products, _ = await self.products.list(page=1, page_size=10000, active_only=False, store_id=1)
+        sales, _ = await self.sales.list(page=1, page_size=10000, store_id=1)
         purchases, _ = await self.purchases.list(page=1, page_size=10000)
         debts, _ = await self.debts.list(page=1, page_size=10000)
         expenses, _ = await self.expenses.list(page=1, page_size=10000)

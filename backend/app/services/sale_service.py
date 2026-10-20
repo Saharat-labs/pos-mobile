@@ -2,13 +2,15 @@
 
 from datetime import datetime
 from typing import Optional, List
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models import Sale, SaleItem, Product, StockMovement
 from app.schemas import SaleCreate, SaleUpdate, SaleItemCreate
 from app.services.product_service import ProductService
+from app.services.setting_service import SettingService
+from app.websocket_manager import broadcast_event
 
 
 class SaleService:
@@ -17,37 +19,66 @@ class SaleService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.product_service = ProductService(db)
+        self.setting_service = SettingService(db)
 
     def _generate_bill_no(self) -> str:
         """Generate unique bill number."""
         from datetime import datetime
-        return f"POS-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        import random
+        # Use microseconds + random to avoid collisions in tests
+        return f"POS-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{random.randint(1000, 9999)}"
 
-    def _calculate_totals(self, items: List[SaleItemCreate], discount: Decimal, vat: Decimal) -> tuple:
-        """Calculate subtotal, discount, vat, total."""
+    async def _get_vat_mode(self, store_id: int = 1) -> str:
+        """Get VAT mode from settings: 'no', 'exclude', 'include'."""
+        return await self.setting_service.get_value("vat", "no", store_id)
+
+    def _calculate_vat(self, taxable_amount: Decimal, vat_mode: str) -> Decimal:
+        """Calculate VAT based on mode (Thai VAT 7%)."""
+        if vat_mode == "exclude":
+            # VAT 7% added on top
+            return (taxable_amount * Decimal("0.07")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        elif vat_mode == "include":
+            # VAT 7% included in price: vat = taxable - taxable/1.07
+            taxable_excl = (taxable_amount / Decimal("1.07")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            return (taxable_amount - taxable_excl).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        else:
+            # 'no' or unknown: no VAT
+            return Decimal("0")
+
+    def _calculate_totals(self, items: List[SaleItemCreate], discount: Decimal, vat_mode: str) -> tuple:
+        """Calculate subtotal, VAT, and total based on VAT mode."""
         subtotal = sum(item.line_total for item in items)
-        total = subtotal - discount + vat
-        return subtotal, total
+        taxable = subtotal - discount
+        vat = self._calculate_vat(taxable, vat_mode)
+        if vat_mode == "include":
+            # VAT included: total = taxable (already includes VAT)
+            total = taxable
+        else:
+            # VAT excluded or no VAT: total = taxable + vat
+            total = taxable + vat
+        return subtotal, vat, total
 
-    async def create(self, data: SaleCreate) -> Sale:
+    async def create(self, data: SaleCreate, store_id: int) -> Sale:
         """Create new sale with items."""
-        # Calculate totals
-        subtotal, total = self._calculate_totals(data.items, data.discount, data.vat)
+        # Calculate totals with VAT based on backend setting
+        vat_mode = await self._get_vat_mode(store_id)
+        subtotal, vat, total = self._calculate_totals(data.items, data.discount, vat_mode)
         change = max(data.paid_amount - total, Decimal(0))
 
         # Create sale
         sale = Sale(
+            store_id=store_id,
             bill_no=self._generate_bill_no(),
             customer_name=data.customer_name,
             customer_phone=data.customer_phone,
             subtotal=subtotal,
             discount=data.discount,
-            vat=data.vat,
+            vat=vat,
             total=total,
             payment_method=data.payment_method,
             paid_amount=data.paid_amount,
             change_amount=change,
-            status="completed" if data.payment_method != "credit" else "completed",
+            status="completed" if data.payment_method != "credit" else "held",
             notes=data.notes,
         )
         self.db.add(sale)
@@ -76,10 +107,23 @@ class SaleService:
                 movement_type="out",
                 reference_type="sale",
                 reference_id=sale.id,
+                store_id=store_id,
             )
 
         await self.db.commit()
         await self.db.refresh(sale)
+
+        # Broadcast sale created event via WebSocket
+        await broadcast_event("sale_created", {
+            "sale_id": sale.id,
+            "store_id": sale.store_id,
+            "bill_no": sale.bill_no,
+            "customer_name": sale.customer_name,
+            "total": float(sale.total),
+            "payment_method": sale.payment_method,
+            "status": sale.status,
+            "created_at": sale.created_at.isoformat() if sale.created_at else None,
+        })
 
         # Load items
         result = await self.db.execute(
@@ -87,17 +131,19 @@ class SaleService:
         )
         return result.scalar_one()
 
-    async def get(self, sale_id: int) -> Optional[Sale]:
-        """Get sale by ID with items."""
+    async def get(self, sale_id: int, store_id: int) -> Optional[Sale]:
+        """Get sale by ID with items (scoped to store)."""
         result = await self.db.execute(
-            select(Sale).options(selectinload(Sale.items)).where(Sale.id == sale_id)
+            select(Sale).options(selectinload(Sale.items))
+            .where(Sale.id == sale_id, Sale.store_id == store_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_bill_no(self, bill_no: str) -> Optional[Sale]:
-        """Get sale by bill number."""
+    async def get_by_bill_no(self, bill_no: str, store_id: int) -> Optional[Sale]:
+        """Get sale by bill number (scoped to store)."""
         result = await self.db.execute(
-            select(Sale).options(selectinload(Sale.items)).where(Sale.bill_no == bill_no)
+            select(Sale).options(selectinload(Sale.items))
+            .where(Sale.bill_no == bill_no, Sale.store_id == store_id)
         )
         return result.scalar_one_or_none()
 
@@ -109,9 +155,10 @@ class SaleService:
         end_date: Optional[datetime] = None,
         payment_method: Optional[str] = None,
         status: Optional[str] = None,
+        store_id: int = None,
     ) -> tuple[List[Sale], int]:
-        """List sales with filters."""
-        query = select(Sale).options(selectinload(Sale.items))
+        """List sales with filters (scoped to store)."""
+        query = select(Sale).options(selectinload(Sale.items)).where(Sale.store_id == store_id)
 
         if start_date:
             query = query.where(Sale.created_at >= start_date)
@@ -133,9 +180,9 @@ class SaleService:
 
         return items, total
 
-    async def update(self, sale_id: int, data: SaleUpdate) -> Optional[Sale]:
-        """Update sale (limited fields)."""
-        sale = await self.get(sale_id)
+    async def update(self, sale_id: int, data: SaleUpdate, store_id: int) -> Optional[Sale]:
+        """Update sale (limited fields, scoped to store)."""
+        sale = await self.get(sale_id, store_id)
         if not sale:
             return None
 
@@ -146,8 +193,8 @@ class SaleService:
         await self.db.refresh(sale)
         return sale
 
-    async def get_daily_summary(self, date: datetime) -> dict:
-        """Get daily sales summary."""
+    async def get_daily_summary(self, date: datetime, store_id: int) -> dict:
+        """Get daily sales summary (scoped to store)."""
         from datetime import timedelta
         start = date.replace(hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
@@ -159,13 +206,15 @@ class SaleService:
                 func.coalesce(func.sum(Sale.subtotal), 0).label("subtotal"),
                 func.coalesce(func.sum(Sale.discount), 0).label("discount"),
                 func.coalesce(func.sum(Sale.vat), 0).label("vat"),
-            ).where(Sale.created_at >= start).where(Sale.created_at < end)
+            ).where(Sale.store_id == store_id)
+            .where(Sale.created_at >= start).where(Sale.created_at < end)
         )
         row = result.one()
 
         # Payment method breakdown
         pm_result = await self.db.execute(
             select(Sale.payment_method, func.count(Sale.id), func.coalesce(func.sum(Sale.total), 0))
+            .where(Sale.store_id == store_id)
             .where(Sale.created_at >= start).where(Sale.created_at < end)
             .group_by(Sale.payment_method)
         )
@@ -181,8 +230,8 @@ class SaleService:
             "payment_methods": payment_methods,
         }
 
-    async def get_top_products(self, start_date: datetime, end_date: datetime, limit: int = 10) -> List[dict]:
-        """Get top selling products."""
+    async def get_top_products(self, start_date: datetime, end_date: datetime, limit: int = 10, store_id: int = None) -> List[dict]:
+        """Get top selling products (scoped to store)."""
         result = await self.db.execute(
             select(
                 SaleItem.product_id,
@@ -192,6 +241,7 @@ class SaleService:
                 func.sum(SaleItem.line_total).label("total_amount"),
             )
             .join(Sale, Sale.id == SaleItem.sale_id)
+            .where(Sale.store_id == store_id)
             .where(Sale.created_at >= start_date)
             .where(Sale.created_at <= end_date)
             .group_by(SaleItem.product_id, SaleItem.product_code, SaleItem.product_name)
