@@ -41,7 +41,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["products"] == 2
@@ -94,14 +94,14 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["sales"] == 1
 
         # Verify sale created
         sale_service = SaleService(test_session)
-        sales, total = await sale_service.list()
+        sales, total = await sale_service.list(store_id=1)
         assert total == 1
         assert sales[0].customer_name == "Sync Customer"
 
@@ -136,7 +136,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["purchases"] == 1
@@ -158,7 +158,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["debts"] == 1
@@ -180,7 +180,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["expenses"] == 1
@@ -209,7 +209,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["stock_movements"] == 1
@@ -233,7 +233,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["hold_bills"] == 1
@@ -250,7 +250,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["settings"] == 2
@@ -266,7 +266,7 @@ class TestSyncService:
             ]
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["category_mappings"] == 1
@@ -315,7 +315,7 @@ class TestSyncService:
             ],
         )
 
-        result = await service.sync(sync_data)
+        result = await service.sync_from_client(sync_data)
 
         assert result.success is True
         assert result.counts["products"] == 1
@@ -333,12 +333,12 @@ class TestSyncService:
         ))
 
         service = SyncService(test_session)
-        backup = await service.backup()
+        backup = await service.full_backup()
 
-        assert backup.timestamp is not None
-        assert backup.version == "1.0.0"
-        assert "products" in backup.data
-        assert len(backup.data["products"]) >= 1
+        assert "products" in backup
+        assert len(backup["products"]) >= 1
+        # Backup dict includes code of the created product
+        assert any(p["code"] == "BACKUP001" for p in backup["products"])
 
     @pytest.mark.asyncio
     async def test_restore(self, test_session: AsyncSession):
@@ -351,7 +351,7 @@ class TestSyncService:
         ))
 
         service = SyncService(test_session)
-        backup = await service.backup()
+        backup = await service.full_backup()
 
         # Delete the product
         from app.models import Product
@@ -363,7 +363,7 @@ class TestSyncService:
             await test_session.commit()
 
         # Restore
-        restore_result = await service.restore(backup.data)
+        restore_result = await service.restore_backup(backup)
 
         assert restore_result.success is True
         assert restore_result.counts["products"] >= 1
@@ -374,11 +374,11 @@ class TestSyncService:
 
     @pytest.mark.asyncio
     async def test_health_check(self, test_session: AsyncSession):
-        """Test health check endpoint."""
-        service = SyncService(test_session)
+        """Test health check endpoint (route function, no service method)."""
+        from app.api.sync import health_check
 
-        health = await service.health_check()
+        health = await health_check()
 
         assert health["status"] == "healthy"
-        assert "database" in health
         assert health["database"] == "connected"
+        assert "timestamp" in health

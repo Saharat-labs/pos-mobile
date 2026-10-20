@@ -191,10 +191,12 @@ class TestExpenseService:
         summary = await service.get_monthly_summary(now.year, now.month)
 
         assert "total" in summary
-        assert "by_category" in summary
+        assert "categories" in summary
         assert summary["total"] == 300.0
-        assert summary["by_category"]["ค่าอาหาร"] == 200.0
-        assert summary["by_category"]["ค่าขนส่ง"] == 100.0
+        # categories is a list of {category, total, count}
+        by_cat = {c["category"]: c["total"] for c in summary["categories"]}
+        assert by_cat["ค่าอาหาร"] == 200.0
+        assert by_cat["ค่าขนส่ง"] == 100.0
 
     @pytest.mark.asyncio
     async def test_yearly_summary(self, test_session: AsyncSession):
@@ -212,6 +214,7 @@ class TestExpenseService:
         summary = await service.get_yearly_summary(now.year)
 
         assert "total" in summary
-        assert "by_category" in summary
+        assert "months" in summary
         assert summary["total"] == 200.0
-        assert summary["by_category"]["ค่าอาหาร"] == 200.0
+        # months is {month: total} with string keys
+        assert summary["months"][str(now.month)] == 200.0

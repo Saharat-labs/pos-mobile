@@ -130,7 +130,7 @@ class TestProductsAPI:
 
         response = await client.delete(f"/api/v1/products/{product_id}")
 
-        assert response.status_code == 200
+        assert response.status_code == 204
 
         # Product should be inactive
         get_resp = await client.get(f"/api/v1/products/{product_id}")
@@ -215,7 +215,7 @@ class TestProductsAPI:
         })
         product_id = create_resp.json()["id"]
 
-        response = await client.post(f"/api/v1/products/{product_id}/stock", json={
+        response = await client.post(f"/api/v1/products/{product_id}/stock", params={
             "quantity": 5,
             "movement_type": "in",
             "reference_type": "manual",

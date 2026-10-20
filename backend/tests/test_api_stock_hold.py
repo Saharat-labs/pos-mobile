@@ -201,7 +201,7 @@ class TestHoldBillsAPI:
 
         response = await client.delete(f"/api/v1/hold-bills/{hold['id']}")
 
-        assert response.status_code == 200
+        assert response.status_code == 204
 
         # Verify deleted
         get_resp = await client.get(f"/api/v1/hold-bills/{hold['id']}")

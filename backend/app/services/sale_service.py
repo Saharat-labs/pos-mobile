@@ -61,6 +61,17 @@ class SaleService:
 
     async def create(self, data: SaleCreate, store_id: int) -> Sale:
         """Create new sale with items."""
+        # Validate stock availability before creating the sale
+        for item_data in data.items:
+            product = await self.product_service.get(item_data.product_id, store_id)
+            if not product:
+                raise ValueError(f"Product {item_data.product_code} not found")
+            if product.stock < item_data.quantity:
+                raise ValueError(
+                    f"Insufficient stock for {item_data.product_name}: "
+                    f"available {product.stock}, requested {item_data.quantity}"
+                )
+
         # Calculate totals with VAT based on backend setting
         vat_mode = await self._get_vat_mode(store_id)
         subtotal, vat, total = self._calculate_totals(data.items, data.discount, vat_mode)

@@ -15,7 +15,7 @@ class ProductService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: ProductCreate, store_id: int) -> Product:
+    async def create(self, data: ProductCreate, store_id: int = 1) -> Product:
         """Create new product."""
         product_data = data.model_dump()
         product_data['store_id'] = store_id  # Ensure store_id from current user's store
@@ -37,21 +37,21 @@ class ProductService:
 
         return product
 
-    async def get(self, product_id: int, store_id: int) -> Optional[Product]:
+    async def get(self, product_id: int, store_id: int = 1) -> Optional[Product]:
         """Get product by ID (scoped to store)."""
         result = await self.db.execute(
             select(Product).where(Product.id == product_id, Product.store_id == store_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_code(self, code: str, store_id: int) -> Optional[Product]:
+    async def get_by_code(self, code: str, store_id: int = 1) -> Optional[Product]:
         """Get product by code (scoped to store)."""
         result = await self.db.execute(
             select(Product).where(Product.code == code, Product.store_id == store_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_barcode(self, barcode: str, store_id: int) -> Optional[Product]:
+    async def get_by_barcode(self, barcode: str, store_id: int = 1) -> Optional[Product]:
         """Get product by barcode (scoped to store)."""
         result = await self.db.execute(
             select(Product).where(Product.barcode == barcode, Product.store_id == store_id)
@@ -107,7 +107,7 @@ class ProductService:
 
         return items, total
 
-    async def update(self, product_id: int, data: ProductUpdate, store_id: int) -> Optional[Product]:
+    async def update(self, product_id: int, data: ProductUpdate, store_id: int = 1) -> Optional[Product]:
         """Update product (scoped to store)."""
         product = await self.get(product_id, store_id)
         if not product:
@@ -123,7 +123,7 @@ class ProductService:
     async def update_stock(
         self, product_id: int, quantity: int, movement_type: str,
         reference_type: str = None, reference_id: int = None, notes: str = None,
-        store_id: int = None
+        store_id: int = 1
     ) -> Optional[Product]:
         """Update product stock and create movement record (public API)."""
         return await self._update_stock(
@@ -131,7 +131,7 @@ class ProductService:
             notes, create_movement=True, store_id=store_id
         )
 
-    async def _update_stock_only(self, product_id: int, quantity: int, store_id: int = None) -> Optional[Product]:
+    async def _update_stock_only(self, product_id: int, quantity: int, store_id: int = 1) -> Optional[Product]:
         """Internal: update stock quantity only, no movement record."""
         return await self._update_stock(
             product_id, quantity, "adjust", None, None, None,
@@ -141,7 +141,7 @@ class ProductService:
     async def _update_stock(
         self, product_id: int, quantity: int, movement_type: str,
         reference_type: str, reference_id: int, notes: str,
-        create_movement: bool, store_id: int = None
+        create_movement: bool, store_id: int = 1
     ) -> Optional[Product]:
         """Internal: update stock with optional movement creation."""
         product = await self.get(product_id, store_id)
@@ -180,7 +180,7 @@ class ProductService:
 
         return product
 
-    async def get_low_stock(self, store_id: int) -> List[Product]:
+    async def get_low_stock(self, store_id: int = 1) -> List[Product]:
         """Get products with low stock."""
         result = await self.db.execute(
             select(Product)
@@ -191,7 +191,7 @@ class ProductService:
         )
         return result.scalars().all()
 
-    async def get_expiring_soon(self, days: int = 30, store_id: int = None) -> List[Product]:
+    async def get_expiring_soon(self, days: int = 30, store_id: int = 1) -> List[Product]:
         """Get products expiring soon."""
         from datetime import datetime, timedelta
         cutoff = datetime.utcnow() + timedelta(days=days)
@@ -205,7 +205,7 @@ class ProductService:
         )
         return result.scalars().all()
 
-    async def delete(self, product_id: int, store_id: int) -> bool:
+    async def delete(self, product_id: int, store_id: int = 1) -> bool:
         """Soft delete product (set inactive)."""
         product = await self.get(product_id, store_id)
         if not product:
@@ -214,7 +214,7 @@ class ProductService:
         await self.db.commit()
         return True
 
-    async def get_categories(self, store_id: int) -> List[str]:
+    async def get_categories(self, store_id: int = 1) -> List[str]:
         """Get all unique categories."""
         result = await self.db.execute(
             select(Product.category)
@@ -224,7 +224,7 @@ class ProductService:
         return [c for c in result.scalars().all() if c]
 
     async def bulk_create(
-        self, products: List[ProductCreate], store_id: int
+        self, products: List[ProductCreate], store_id: int = 1
     ) -> List[Product]:
         """Bulk create products (upsert by code)."""
         created = []

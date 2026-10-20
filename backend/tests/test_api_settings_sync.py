@@ -66,7 +66,7 @@ class TestSettingsAPI:
 
         response = await client.delete("/api/v1/settings/delete_setting")
 
-        assert response.status_code == 200
+        assert response.status_code == 204
 
         # Verify deleted
         get_resp = await client.get("/api/v1/settings/delete_setting")
@@ -147,7 +147,7 @@ class TestCategoryMappingsAPI:
 
         response = await client.delete("/api/v1/settings/mappings/66")
 
-        assert response.status_code == 200
+        assert response.status_code == 204
 
         get_resp = await client.get("/api/v1/settings/mappings/66")
         assert get_resp.status_code == 404

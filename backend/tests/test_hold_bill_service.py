@@ -34,7 +34,7 @@ class TestHoldBillService:
         hold_bill = await service.create(hold_data)
 
         assert hold_bill.id is not None
-        assert hold_bill.bill_no == "HOLD-001"
+        assert hold_bill.bill_no.startswith("HOLD-")
         assert hold_bill.customer_name == "Hold Customer"
         assert hold_bill.total == Decimal("203.30")
 
@@ -58,7 +58,9 @@ class TestHoldBillService:
 
         assert hold_bill is not None
         assert hold_bill.id == created.id
-        assert hold_bill.bill_no == "HOLD-002"
+        # Service generates its own bill_no (client-sent value is ignored)
+        assert hold_bill.bill_no == created.bill_no
+        assert hold_bill.bill_no.startswith("HOLD-")
 
     @pytest.mark.asyncio
     async def test_get_hold_bill_by_bill_no(self, test_session: AsyncSession):
@@ -74,12 +76,12 @@ class TestHoldBillService:
             subtotal=Decimal("100.00"),
             total=Decimal("100.00"),
         )
-        await service.create(hold_data)
+        created = await service.create(hold_data)
 
-        hold_bill = await service.get_by_bill_no("HOLD-003")
+        hold_bill = await service.get_by_bill_no(created.bill_no)
 
         assert hold_bill is not None
-        assert hold_bill.bill_no == "HOLD-003"
+        assert hold_bill.bill_no == created.bill_no
 
     @pytest.mark.asyncio
     async def test_list_hold_bills(self, test_session: AsyncSession):

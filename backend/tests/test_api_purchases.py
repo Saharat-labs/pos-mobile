@@ -73,8 +73,11 @@ class TestPurchasesAPI:
         })
         purchase = pur_resp.json()
 
-        # Receive it
-        response = await client.post(f"/api/v1/purchases/{purchase['id']}/receive")
+        # Receive it (body = list of {item_id, received_qty})
+        response = await client.post(
+            f"/api/v1/purchases/{purchase['id']}/receive",
+            json=[{"item_id": purchase["items"][0]["id"], "received_qty": 10}],
+        )
 
         assert response.status_code == 200
         data = response.json()

@@ -78,19 +78,16 @@ class CategoryMappingService:
         return result.scalar_one_or_none()
 
     async def get_category(self, code: str) -> Optional[str]:
-        """Get category for product code (longest prefix match)."""
-        # Try exact match first
-        mapping = await self.get(code[:3]) if len(code) >= 3 else None
-        if mapping:
-            return mapping.category
-
-        # Try shorter prefixes
-        for length in [2, 1]:
-            if len(code) >= length:
-                mapping = await self.get(code[:length])
-                if mapping:
-                    return mapping.category
-        return None
+        """Get category for product code (true longest prefix match)."""
+        # Fetch all mappings once, then pick the longest matching prefix
+        result = await self.db.execute(select(CategoryMapping))
+        mappings = result.scalars().all()
+        best = None
+        for m in mappings:
+            if m.code_prefix and code.startswith(m.code_prefix):
+                if best is None or len(m.code_prefix) > len(best.code_prefix):
+                    best = m
+        return best.category if best else None
 
     async def create(self, data: CategoryMappingCreate) -> CategoryMapping:
         """Create new category mapping."""

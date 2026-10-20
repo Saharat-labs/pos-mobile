@@ -16,13 +16,16 @@ class HoldBillService:
         self.db = db
 
     def _generate_bill_no(self) -> str:
-        """Generate unique hold bill number."""
-        return f"HOLD-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        """Generate unique hold bill number (timestamp + microseconds + random)."""
+        import random
+        ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        return f"HOLD-{ts}-{random.randint(1000, 9999)}"
 
-    async def create(self, data: HoldBillCreate) -> HoldBill:
-        """Create new hold bill."""
+    async def create(self, data: HoldBillCreate, store_id: int = 1) -> HoldBill:
+        """Create new hold bill (uses client bill_no if given, else generates)."""
         bill = HoldBill(
-            bill_no=self._generate_bill_no(),
+            store_id=store_id,
+            bill_no=data.bill_no or self._generate_bill_no(),
             items=data.items,
             customer_name=data.customer_name,
             customer_phone=data.customer_phone,
@@ -36,19 +39,23 @@ class HoldBillService:
         await self.db.refresh(bill)
         return bill
 
-    async def get(self, bill_id: int) -> Optional[HoldBill]:
+    async def get(self, bill_id: int, store_id: int = 1) -> Optional[HoldBill]:
         """Get hold bill by ID."""
-        result = await self.db.execute(select(HoldBill).where(HoldBill.id == bill_id))
+        result = await self.db.execute(
+            select(HoldBill).where(HoldBill.id == bill_id, HoldBill.store_id == store_id)
+        )
         return result.scalar_one_or_none()
 
-    async def get_by_bill_no(self, bill_no: str) -> Optional[HoldBill]:
+    async def get_by_bill_no(self, bill_no: str, store_id: int = 1) -> Optional[HoldBill]:
         """Get hold bill by bill number."""
-        result = await self.db.execute(select(HoldBill).where(HoldBill.bill_no == bill_no))
+        result = await self.db.execute(
+            select(HoldBill).where(HoldBill.bill_no == bill_no, HoldBill.store_id == store_id)
+        )
         return result.scalar_one_or_none()
 
-    async def list(self, page: int = 1, page_size: int = 50) -> tuple[List[HoldBill], int]:
+    async def list(self, page: int = 1, page_size: int = 50, store_id: int = 1) -> tuple[List[HoldBill], int]:
         """List hold bills."""
-        query = select(HoldBill)
+        query = select(HoldBill).where(HoldBill.store_id == store_id)
 
         count_query = select(func.count()).select_from(query.subquery())
         total = await self.db.scalar(count_query) or 0
@@ -59,9 +66,9 @@ class HoldBillService:
 
         return items, total
 
-    async def delete(self, bill_id: int) -> bool:
+    async def delete(self, bill_id: int, store_id: int = 1) -> bool:
         """Delete hold bill."""
-        bill = await self.get(bill_id)
+        bill = await self.get(bill_id, store_id)
         if not bill:
             return False
         await self.db.delete(bill)

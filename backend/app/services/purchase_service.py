@@ -19,18 +19,21 @@ class PurchaseService:
         self.product_service = ProductService(db)
 
     def _generate_po_no(self) -> str:
-        """Generate unique PO number."""
-        return f"PO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        """Generate unique PO number (timestamp + microseconds + random)."""
+        import random
+        ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        return f"PO-{ts}-{random.randint(1000, 9999)}"
 
     def _calculate_total(self, items: List[PurchaseItemCreate]) -> Decimal:
         """Calculate total from items."""
         return sum(item.line_total for item in items)
 
-    async def create(self, data: PurchaseCreate) -> Purchase:
+    async def create(self, data: PurchaseCreate, store_id: int = 1) -> Purchase:
         """Create new purchase order."""
         total = self._calculate_total(data.items)
 
         purchase = Purchase(
+            store_id=store_id,
             po_no=self._generate_po_no(),
             supplier_name=data.supplier_name,
             supplier_phone=data.supplier_phone,
@@ -65,17 +68,19 @@ class PurchaseService:
         )
         return result.scalar_one()
 
-    async def get(self, purchase_id: int) -> Optional[Purchase]:
+    async def get(self, purchase_id: int, store_id: int = 1) -> Optional[Purchase]:
         """Get purchase by ID with items."""
         result = await self.db.execute(
-            select(Purchase).options(selectinload(Purchase.items)).where(Purchase.id == purchase_id)
+            select(Purchase).options(selectinload(Purchase.items))
+            .where(Purchase.id == purchase_id, Purchase.store_id == store_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_po_no(self, po_no: str) -> Optional[Purchase]:
+    async def get_by_po_no(self, po_no: str, store_id: int = 1) -> Optional[Purchase]:
         """Get purchase by PO number."""
         result = await self.db.execute(
-            select(Purchase).options(selectinload(Purchase.items)).where(Purchase.po_no == po_no)
+            select(Purchase).options(selectinload(Purchase.items))
+            .where(Purchase.po_no == po_no, Purchase.store_id == store_id)
         )
         return result.scalar_one_or_none()
 
@@ -86,9 +91,10 @@ class PurchaseService:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         status: Optional[str] = None,
+        store_id: int = 1,
     ) -> tuple[List[Purchase], int]:
         """List purchases with filters."""
-        query = select(Purchase).options(selectinload(Purchase.items))
+        query = select(Purchase).options(selectinload(Purchase.items)).where(Purchase.store_id == store_id)
 
         if start_date:
             query = query.where(Purchase.created_at >= start_date)
@@ -106,9 +112,9 @@ class PurchaseService:
 
         return items, total
 
-    async def receive(self, purchase_id: int, received_items: List[dict]) -> Optional[Purchase]:
+    async def receive(self, purchase_id: int, received_items: List[dict], store_id: int = 1) -> Optional[Purchase]:
         """Receive purchase items and update stock."""
-        purchase = await self.get(purchase_id)
+        purchase = await self.get(purchase_id, store_id)
         if not purchase:
             return None
 
@@ -134,6 +140,7 @@ class PurchaseService:
                 movement_type="in",
                 reference_type="purchase",
                 reference_id=purchase_id,
+                store_id=store_id,
             )
 
         # Check if fully received
@@ -146,9 +153,9 @@ class PurchaseService:
         await self.db.refresh(purchase)
         return purchase
 
-    async def update(self, purchase_id: int, data: PurchaseUpdate) -> Optional[Purchase]:
+    async def update(self, purchase_id: int, data: PurchaseUpdate, store_id: int = 1) -> Optional[Purchase]:
         """Update purchase."""
-        purchase = await self.get(purchase_id)
+        purchase = await self.get(purchase_id, store_id)
         if not purchase:
             return None
 

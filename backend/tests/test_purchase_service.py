@@ -83,8 +83,10 @@ class TestPurchaseService:
         )
         purchase = await purchase_service.create(purchase_data)
 
-        # Receive the purchase
-        received = await purchase_service.receive(purchase.id)
+        # Receive the purchase (all items fully received)
+        received = await purchase_service.receive(purchase.id, [
+            {"item_id": purchase.items[0].id, "received_qty": 10}
+        ])
 
         assert received.status == "received"
         assert received.received_date is not None

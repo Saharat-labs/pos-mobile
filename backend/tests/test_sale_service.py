@@ -9,6 +9,8 @@ from app.services.product_service import ProductService
 from app.services.setting_service import SettingService
 from app.schemas import SaleCreate, SaleItemCreate, ProductCreate
 
+STORE_ID = 1  # Default test store (created in conftest)
+
 
 class TestSaleService:
     """Test SaleService methods."""
@@ -19,10 +21,10 @@ class TestSaleService:
         product_service = ProductService(test_session)
         sale_service = SaleService(test_session)
         setting_service = SettingService(test_session)
-        
+
         # Set VAT mode to 'exclude' (VAT added on top)
-        await setting_service.set("vat", "exclude", "VAT mode: exclude=added on top, include=included in price, no=no VAT")
-        
+        await setting_service.set("vat", "exclude", "VAT mode: exclude=added on top, include=included in price, no=no VAT", store_id=STORE_ID)
+
         # Create a product first
         product = await product_service.create(ProductCreate(
             code="SALE001",
@@ -30,8 +32,8 @@ class TestSaleService:
             price=Decimal("100.00"),
             cost=Decimal("50.00"),
             stock=10,
-        ))
-        
+        ), store_id=STORE_ID)
+
         # Create sale
         sale_data = SaleCreate(
             customer_name="Test Customer",
@@ -54,9 +56,9 @@ class TestSaleService:
                 )
             ],
         )
-        
-        sale = await sale_service.create(sale_data)
-        
+
+        sale = await sale_service.create(sale_data, store_id=STORE_ID)
+
         assert sale.id is not None
         assert sale.bill_no.startswith("POS-")
         assert sale.customer_name == "Test Customer"
@@ -67,9 +69,10 @@ class TestSaleService:
         # Backend calculates VAT: (90 - 10) * 0.07 = 5.60
         assert sale.vat == Decimal("5.60")
         assert sale.total == Decimal("85.60")
-        
+        assert sale.store_id == STORE_ID
+
         # Check stock was reduced
-        updated_product = await product_service.get(product.id)
+        updated_product = await product_service.get(product.id, store_id=STORE_ID)
         assert updated_product.stock == 9
 
     @pytest.mark.asyncio
@@ -78,16 +81,16 @@ class TestSaleService:
         product_service = ProductService(test_session)
         sale_service = SaleService(test_session)
         setting_service = SettingService(test_session)
-        
-        await setting_service.set("vat", "exclude", "VAT mode")
-        
+
+        await setting_service.set("vat", "exclude", "VAT mode", store_id=STORE_ID)
+
         product = await product_service.create(ProductCreate(
             code="SALE002",
             name="Credit Product",
             price=Decimal("200.00"),
             stock=5,
-        ))
-        
+        ), store_id=STORE_ID)
+
         sale_data = SaleCreate(
             customer_name="Credit Customer",
             payment_method="credit",
@@ -105,9 +108,9 @@ class TestSaleService:
                 )
             ],
         )
-        
-        sale = await sale_service.create(sale_data)
-        
+
+        sale = await sale_service.create(sale_data, store_id=STORE_ID)
+
         assert sale.status == "held"
         assert sale.payment_method == "credit"
 
@@ -117,16 +120,16 @@ class TestSaleService:
         product_service = ProductService(test_session)
         sale_service = SaleService(test_session)
         setting_service = SettingService(test_session)
-        
-        await setting_service.set("vat", "exclude", "VAT mode")
-        
+
+        await setting_service.set("vat", "exclude", "VAT mode", store_id=STORE_ID)
+
         product = await product_service.create(ProductCreate(
             code="SALE003",
             name="Get Sale Product",
             price=Decimal("150.00"),
             stock=10,
-        ))
-        
+        ), store_id=STORE_ID)
+
         sale_data = SaleCreate(
             payment_method="cash",
             paid_amount=Decimal("150.00"),
@@ -143,10 +146,10 @@ class TestSaleService:
                 )
             ],
         )
-        created = await sale_service.create(sale_data)
-        
-        sale = await sale_service.get(created.id)
-        
+        created = await sale_service.create(sale_data, store_id=STORE_ID)
+
+        sale = await sale_service.get(created.id, store_id=STORE_ID)
+
         assert sale is not None
         assert sale.id == created.id
         assert len(sale.items) == 1
@@ -157,16 +160,16 @@ class TestSaleService:
         product_service = ProductService(test_session)
         sale_service = SaleService(test_session)
         setting_service = SettingService(test_session)
-        
-        await setting_service.set("vat", "exclude", "VAT mode")
-        
+
+        await setting_service.set("vat", "exclude", "VAT mode", store_id=STORE_ID)
+
         product = await product_service.create(ProductCreate(
             code="SALE004",
             name="Bill No Product",
             price=Decimal("100.00"),
             stock=10,
-        ))
-        
+        ), store_id=STORE_ID)
+
         sale_data = SaleCreate(
             payment_method="cash",
             paid_amount=Decimal("100.00"),
@@ -183,10 +186,10 @@ class TestSaleService:
                 )
             ],
         )
-        created = await sale_service.create(sale_data)
-        
-        sale = await sale_service.get_by_bill_no(created.bill_no)
-        
+        created = await sale_service.create(sale_data, store_id=STORE_ID)
+
+        sale = await sale_service.get_by_bill_no(created.bill_no, store_id=STORE_ID)
+
         assert sale is not None
         assert sale.bill_no == created.bill_no
 
@@ -196,16 +199,16 @@ class TestSaleService:
         product_service = ProductService(test_session)
         sale_service = SaleService(test_session)
         setting_service = SettingService(test_session)
-        
-        await setting_service.set("vat", "exclude", "VAT mode")
-        
+
+        await setting_service.set("vat", "exclude", "VAT mode", store_id=STORE_ID)
+
         product = await product_service.create(ProductCreate(
             code="SALE005",
             name="List Sale Product",
             price=Decimal("100.00"),
             stock=20,
-        ))
-        
+        ), store_id=STORE_ID)
+
         # Create multiple sales
         for i in range(3):
             await sale_service.create(SaleCreate(
@@ -223,10 +226,10 @@ class TestSaleService:
                         line_total=Decimal("100.00"),
                     )
                 ],
-            ))
-        
-        sales, total = await sale_service.list(page=1, page_size=2)
-        
+            ), store_id=STORE_ID)
+
+        sales, total = await sale_service.list(page=1, page_size=2, store_id=STORE_ID)
+
         assert len(sales) == 2
         assert total == 3
 
@@ -236,16 +239,16 @@ class TestSaleService:
         product_service = ProductService(test_session)
         sale_service = SaleService(test_session)
         setting_service = SettingService(test_session)
-        
-        await setting_service.set("vat", "exclude", "VAT mode")
-        
+
+        await setting_service.set("vat", "exclude", "VAT mode", store_id=STORE_ID)
+
         product = await product_service.create(ProductCreate(
             code="SALE006",
             name="Summary Product",
             price=Decimal("100.00"),
             stock=10,
-        ))
-        
+        ), store_id=STORE_ID)
+
         await sale_service.create(SaleCreate(
             payment_method="cash",
             paid_amount=Decimal("100.00"),
@@ -261,10 +264,10 @@ class TestSaleService:
                     line_total=Decimal("100.00"),
                 )
             ],
-        ))
-        
-        summary = await sale_service.get_daily_summary(datetime.utcnow())
-        
+        ), store_id=STORE_ID)
+
+        summary = await sale_service.get_daily_summary(datetime.utcnow(), store_id=STORE_ID)
+
         assert summary["count"] == 1
         # With VAT exclude mode: 100 + (100 * 0.07) = 107
         assert summary["total"] == 107.00

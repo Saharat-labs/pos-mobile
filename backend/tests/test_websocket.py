@@ -8,6 +8,16 @@ from unittest.mock import AsyncMock, MagicMock
 from app.websocket_manager import manager, create_event, broadcast_event
 
 
+@pytest.fixture(autouse=True)
+def clean_manager():
+    """Reset global manager state before each test (prevents leaks between tests)."""
+    manager.active_connections.clear()
+    manager.client_subscriptions.clear()
+    yield
+    manager.active_connections.clear()
+    manager.client_subscriptions.clear()
+
+
 class TestWebSocketManager:
     """Test WebSocket connection manager."""
 
@@ -157,6 +167,6 @@ class TestWebSocketEndpoints:
             ],
         )
 
-        sale = await sale_service.create(sale_data)
+        sale = await sale_service.create(sale_data, store_id=1)
         assert sale.id is not None
         assert sale.bill_no.startswith("POS-")

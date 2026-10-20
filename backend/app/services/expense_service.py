@@ -15,9 +15,10 @@ class ExpenseService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: ExpenseCreate) -> Expense:
+    async def create(self, data: ExpenseCreate, store_id: int = 1) -> Expense:
         """Create new expense."""
         expense = Expense(
+            store_id=store_id,
             date=data.date or datetime.utcnow(),
             category=data.category,
             description=data.description,
@@ -30,9 +31,11 @@ class ExpenseService:
         await self.db.refresh(expense)
         return expense
 
-    async def get(self, expense_id: int) -> Optional[Expense]:
+    async def get(self, expense_id: int, store_id: int = 1) -> Optional[Expense]:
         """Get expense by ID."""
-        result = await self.db.execute(select(Expense).where(Expense.id == expense_id))
+        result = await self.db.execute(
+            select(Expense).where(Expense.id == expense_id, Expense.store_id == store_id)
+        )
         return result.scalar_one_or_none()
 
     async def list(
@@ -42,9 +45,10 @@ class ExpenseService:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         category: Optional[str] = None,
+        store_id: int = 1,
     ) -> tuple[List[Expense], int]:
         """List expenses with filters."""
-        query = select(Expense)
+        query = select(Expense).where(Expense.store_id == store_id)
 
         if start_date:
             query = query.where(Expense.date >= start_date)
@@ -62,9 +66,9 @@ class ExpenseService:
 
         return items, total
 
-    async def update(self, expense_id: int, data: ExpenseUpdate) -> Optional[Expense]:
+    async def update(self, expense_id: int, data: ExpenseUpdate, store_id: int = 1) -> Optional[Expense]:
         """Update expense."""
-        expense = await self.get(expense_id)
+        expense = await self.get(expense_id, store_id)
         if not expense:
             return None
 
@@ -75,21 +79,23 @@ class ExpenseService:
         await self.db.refresh(expense)
         return expense
 
-    async def delete(self, expense_id: int) -> bool:
+    async def delete(self, expense_id: int, store_id: int = 1) -> bool:
         """Delete expense."""
-        expense = await self.get(expense_id)
+        expense = await self.get(expense_id, store_id)
         if not expense:
             return False
         await self.db.delete(expense)
         await self.db.commit()
         return True
 
-    async def get_categories(self) -> List[str]:
+    async def get_categories(self, store_id: int = 1) -> List[str]:
         """Get all unique expense categories."""
-        result = await self.db.execute(select(Expense.category).distinct())
+        result = await self.db.execute(
+            select(Expense.category).where(Expense.store_id == store_id).distinct()
+        )
         return result.scalars().all()
 
-    async def get_monthly_summary(self, year: int, month: int) -> dict:
+    async def get_monthly_summary(self, year: int, month: int, store_id: int = 1) -> dict:
         """Get monthly expense summary by category."""
         result = await self.db.execute(
             select(
@@ -97,6 +103,7 @@ class ExpenseService:
                 func.coalesce(func.sum(Expense.amount), 0).label("total"),
                 func.count(Expense.id).label("count"),
             )
+            .where(Expense.store_id == store_id)
             .where(extract("year", Expense.date) == year)
             .where(extract("month", Expense.date) == month)
             .group_by(Expense.category)
@@ -110,13 +117,14 @@ class ExpenseService:
         total = sum(c["total"] for c in categories)
         return {"year": year, "month": month, "total": total, "categories": categories}
 
-    async def get_yearly_summary(self, year: int) -> dict:
+    async def get_yearly_summary(self, year: int, store_id: int = 1) -> dict:
         """Get yearly expense summary."""
         result = await self.db.execute(
             select(
                 extract("month", Expense.date).label("month"),
                 func.coalesce(func.sum(Expense.amount), 0).label("total"),
             )
+            .where(Expense.store_id == store_id)
             .where(extract("year", Expense.date) == year)
             .group_by("month")
             .order_by("month")
@@ -128,4 +136,5 @@ class ExpenseService:
                 months[m] = 0.0
 
         total = sum(months.values())
-        return {"year": year, "total": total, "months": months}
+        # String keys so JSON response keeps month numbers as keys
+        return {"year": year, "total": total, "months": {str(k): v for k, v in months.items()}}

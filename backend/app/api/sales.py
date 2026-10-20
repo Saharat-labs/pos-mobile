@@ -39,7 +39,10 @@ async def create_sale(
     for item in data.items:
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="Item quantity must be positive")
-    return await service.create(data, current_store.id)
+    try:
+        return await service.create(data, current_store.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("", response_model=SaleListResponse)

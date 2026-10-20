@@ -14,6 +14,9 @@ api_router.include_router(debts.router)
 api_router.include_router(expenses.router)
 api_router.include_router(stock_movements.router)
 api_router.include_router(hold_bills.router)
+# mappings_router must be registered before settings.router so "/settings/mappings"
+# is not shadowed by the catch-all "/settings/{key}" route.
+api_router.include_router(settings.mappings_router)
 api_router.include_router(settings.router)
 api_router.include_router(sync.router)
 api_router.include_router(stores.router)

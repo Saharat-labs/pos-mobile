@@ -80,7 +80,7 @@ class TestExpensesAPI:
 
         response = await client.delete(f"/api/v1/expenses/{expense['id']}")
 
-        assert response.status_code == 200
+        assert response.status_code == 204
 
         # Verify deleted
         get_resp = await client.get(f"/api/v1/expenses/{expense['id']}")
@@ -175,7 +175,8 @@ class TestExpensesAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 300.0
-        assert data["by_category"]["ค่าอาหาร"] == 200.0
+        by_cat = {c["category"]: c["total"] for c in data["categories"]}
+        assert by_cat["ค่าอาหาร"] == 200.0
 
     @pytest.mark.asyncio
     async def test_yearly_summary(self, client: AsyncClient):
@@ -193,4 +194,4 @@ class TestExpensesAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 200.0
-        assert data["by_category"]["ค่าอาหาร"] == 200.0
+        assert data["months"][str(now.month)] == 200.0

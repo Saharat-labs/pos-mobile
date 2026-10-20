@@ -109,11 +109,11 @@ class TestSettingService:
         service = SettingService(test_session)
 
         settings_data = [
-            SettingCreate(key="bulk_1", value="value_1", description="Bulk 1"),
-            SettingCreate(key="bulk_2", value="value_2", description="Bulk 2"),
+            SettingCreate(store_id=1, key="bulk_1", value="value_1", description="Bulk 1"),
+            SettingCreate(store_id=1, key="bulk_2", value="value_2", description="Bulk 2"),
         ]
 
-        result = await service.bulk_set(settings_data)
+        result = await service.bulk_set(settings_data, store_id=1)
 
         assert len(result) == 2
         assert result[0].key == "bulk_1"

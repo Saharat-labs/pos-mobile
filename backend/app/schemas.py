@@ -9,7 +9,7 @@ from decimal import Decimal
 # ==================== Product Schemas ====================
 
 class ProductBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     code: str = Field(..., max_length=50)
     barcode: Optional[str] = Field(None, max_length=100)
     name: str = Field(..., max_length=200)
@@ -95,7 +95,7 @@ class SaleItemResponse(SaleItemBase):
 
 
 class SaleBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     customer_name: Optional[str] = Field(None, max_length=200)
     customer_phone: Optional[str] = Field(None, max_length=20)
     discount: Decimal = Field(0, ge=0)
@@ -179,7 +179,7 @@ class PurchaseItemResponse(PurchaseItemBase):
 
 
 class PurchaseBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     supplier_name: Optional[str] = Field(None, max_length=200)
     supplier_phone: Optional[str] = Field(None, max_length=20)
     status: str = Field("pending", pattern="^(pending|received|cancelled)$")
@@ -254,9 +254,10 @@ class DebtPaymentResponse(DebtPaymentBase):
 
 
 class DebtBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     customer_name: str = Field(..., max_length=200)
     customer_phone: Optional[str] = Field(None, max_length=20)
+    total_debt: Decimal = Field(0, ge=0)
     notes: Optional[str] = None
 
     class Config:
@@ -303,7 +304,7 @@ class DebtListResponse(BaseModel):
 # ==================== Expense Schemas ====================
 
 class ExpenseBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     category: str = Field(..., max_length=100)
     description: str = Field(..., max_length=500)
     amount: Decimal = Field(..., gt=0)
@@ -352,7 +353,7 @@ class ExpenseListResponse(BaseModel):
 # ==================== Stock Movement Schemas ====================
 
 class StockMovementBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     product_id: int
     movement_type: str = Field(..., pattern="^(in|out|adjust|waste|return)$")
     quantity: int = Field(..., gt=0)
@@ -389,7 +390,8 @@ class StockMovementListResponse(BaseModel):
 # ==================== Hold Bill Schemas ====================
 
 class HoldBillBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
+    bill_no: Optional[str] = Field(None, max_length=100)
     items: str  # JSON string
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
@@ -411,7 +413,6 @@ class HoldBillResponse(HoldBillBase):
     bill_no: str
     created_at: datetime
     updated_at: datetime
-
     class Config:
         from_attributes = True
 
@@ -429,7 +430,7 @@ class HoldBillListResponse(BaseModel):
 # ==================== Setting Schemas ====================
 
 class SettingBase(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: Optional[int] = None
     key: str = Field(..., max_length=100)
     value: str
     description: Optional[str] = None

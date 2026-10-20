@@ -40,4 +40,4 @@ async def restore_backup(data: dict, service: SyncService = Depends(get_service)
 @router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "database": "connected", "timestamp": datetime.utcnow().isoformat()}

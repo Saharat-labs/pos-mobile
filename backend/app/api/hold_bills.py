@@ -7,6 +7,8 @@ from app.database import get_db
 from app.services.hold_bill_service import HoldBillService
 from app.schemas import HoldBillCreate, HoldBillResponse, HoldBillListResponse
 from app.api.validation import validate_page_params, MAX_PAGE_SIZE
+from app.auth import get_current_store
+from app.models import Store
 
 router = APIRouter(prefix="/hold-bills", tags=["Hold Bills"])
 
@@ -16,9 +18,13 @@ def get_service(db: AsyncSession = Depends(get_db)) -> HoldBillService:
 
 
 @router.post("", response_model=HoldBillResponse, status_code=201)
-async def create_hold_bill(data: HoldBillCreate, service: HoldBillService = Depends(get_service)):
+async def create_hold_bill(
+    data: HoldBillCreate,
+    service: HoldBillService = Depends(get_service),
+    current_store: Store = Depends(get_current_store),
+):
     """Create new hold bill."""
-    return await service.create(data)
+    return await service.create(data, current_store.id)
 
 
 @router.get("", response_model=HoldBillListResponse)
@@ -26,34 +32,47 @@ async def list_hold_bills(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     service: HoldBillService = Depends(get_service),
+    current_store: Store = Depends(get_current_store),
 ):
     """List hold bills."""
     page, page_size = validate_page_params(page, page_size)
-    items, total = await service.list(page, page_size)
+    items, total = await service.list(page, page_size, current_store.id)
     return HoldBillListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{bill_id}", response_model=HoldBillResponse)
-async def get_hold_bill(bill_id: int, service: HoldBillService = Depends(get_service)):
+async def get_hold_bill(
+    bill_id: int,
+    service: HoldBillService = Depends(get_service),
+    current_store: Store = Depends(get_current_store),
+):
     """Get hold bill by ID."""
-    bill = await service.get(bill_id)
+    bill = await service.get(bill_id, current_store.id)
     if not bill:
         raise HTTPException(status_code=404, detail="Hold bill not found")
     return bill
 
 
 @router.get("/bill/{bill_no}", response_model=HoldBillResponse)
-async def get_hold_bill_by_no(bill_no: str, service: HoldBillService = Depends(get_service)):
+async def get_hold_bill_by_no(
+    bill_no: str,
+    service: HoldBillService = Depends(get_service),
+    current_store: Store = Depends(get_current_store),
+):
     """Get hold bill by bill number."""
-    bill = await service.get_by_bill_no(bill_no)
+    bill = await service.get_by_bill_no(bill_no, current_store.id)
     if not bill:
         raise HTTPException(status_code=404, detail="Hold bill not found")
     return bill
 
 
 @router.delete("/{bill_id}", status_code=204)
-async def delete_hold_bill(bill_id: int, service: HoldBillService = Depends(get_service)):
+async def delete_hold_bill(
+    bill_id: int,
+    service: HoldBillService = Depends(get_service),
+    current_store: Store = Depends(get_current_store),
+):
     """Delete hold bill."""
-    success = await service.delete(bill_id)
+    success = await service.delete(bill_id, current_store.id)
     if not success:
         raise HTTPException(status_code=404, detail="Hold bill not found")

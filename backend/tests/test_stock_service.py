@@ -118,7 +118,7 @@ class TestStockMovementService:
             quantity=5,
         ))
 
-        movements = await stock_service.get_by_product(product1.id)
+        movements = await stock_service.get_product_history(product1.id)
 
         assert len(movements) == 1
         assert movements[0].product_id == product1.id
@@ -151,10 +151,10 @@ class TestStockMovementService:
             quantity=2,
         ))
 
-        in_movements = await stock_service.get_by_product(product.id, movement_type="in")
-        out_movements = await stock_service.get_by_product(product.id, movement_type="out")
+        in_items, _ = await stock_service.list(product_id=product.id, movement_type="in")
+        out_items, _ = await stock_service.list(product_id=product.id, movement_type="out")
 
-        assert len(in_movements) == 1
-        assert in_movements[0].quantity == 10
-        assert len(out_movements) == 1
-        assert out_movements[0].quantity == 3
+        assert len(in_items) == 1
+        assert in_items[0].quantity == 10
+        assert len(out_items) == 1
+        assert out_items[0].quantity == 3

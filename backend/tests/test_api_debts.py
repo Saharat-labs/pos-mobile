@@ -23,7 +23,7 @@ class TestDebtsAPI:
         data = response.json()
         assert data["customer_name"] == "API Debt Customer"
         assert data["total_debt"] == "500.00"
-        assert data["paid_amount"] == "0.00"
+        assert float(data["paid_amount"]) == 0.0
         assert data["remaining"] == "500.00"
         assert data["status"] == "open"
 
@@ -89,8 +89,8 @@ class TestDebtsAPI:
         # Check debt updated
         get_resp = await client.get(f"/api/v1/debts/{debt['id']}")
         updated = get_resp.json()
-        assert updated["paid_amount"] == "300.00"
-        assert updated["remaining"] == "700.00"
+        assert float(updated["paid_amount"]) == 300.0
+        assert float(updated["remaining"]) == 700.0
         assert updated["status"] == "partial"
 
     @pytest.mark.asyncio
@@ -109,8 +109,8 @@ class TestDebtsAPI:
 
         get_resp = await client.get(f"/api/v1/debts/{debt['id']}")
         updated = get_resp.json()
-        assert updated["paid_amount"] == "250.00"
-        assert updated["remaining"] == "0.00"
+        assert float(updated["paid_amount"]) == 250.0
+        assert float(updated["remaining"]) == 0.0
         assert updated["status"] == "paid"
 
     @pytest.mark.asyncio
