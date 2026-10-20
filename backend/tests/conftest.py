@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.models import Base
+from app.models import Base, Store
 from app.database import get_db
 from app.main import app
 from app.config import settings
@@ -31,9 +31,13 @@ async def test_engine():
 
 @pytest_asyncio.fixture(scope="function")
 async def test_session(test_engine):
-    """Create test database session."""
+    """Create test database session with default store (id=1)."""
     async_session = sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with async_session() as session:
+        # Create default store for multi-store tests
+        default_store = Store(id=1, name="Test Store", code="TEST001", is_active=True, is_default=True)
+        session.add(default_store)
+        await session.commit()
         yield session
 
 

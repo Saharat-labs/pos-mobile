@@ -47,7 +47,8 @@ class SaleService:
 
     def _calculate_totals(self, items: List[SaleItemCreate], discount: Decimal, vat_mode: str) -> tuple:
         """Calculate subtotal, VAT, and total based on VAT mode."""
-        subtotal = sum(item.line_total for item in items)
+        # Calculate subtotal from unit_price * quantity - discount (don't trust client-sent line_total)
+        subtotal = sum((item.unit_price * item.quantity) - item.discount for item in items)
         taxable = subtotal - discount
         vat = self._calculate_vat(taxable, vat_mode)
         if vat_mode == "include":

@@ -49,7 +49,7 @@ class SyncService:
 
         # Sync products
         if data.products:
-            await self.products.bulk_create(data.products)
+            await self.products.bulk_create(data.products, store_id=1)
             counts["products"] = len(data.products)
 
         # Sync sales
@@ -61,31 +61,31 @@ class SyncService:
         # Sync purchases
         if data.purchases:
             for po_data in data.purchases:
-                await self.purchases.create(po_data)
+                await self.purchases.create(po_data, store_id=1)  # TODO: multi-store sync (Phase 2)
             counts["purchases"] = len(data.purchases)
 
         # Sync debts
         if data.debts:
             for debt_data in data.debts:
-                await self.debts.create(debt_data)
+                await self.debts.create(debt_data, store_id=1)  # TODO: multi-store sync (Phase 2)
             counts["debts"] = len(data.debts)
 
         # Sync expenses
         if data.expenses:
             for exp_data in data.expenses:
-                await self.expenses.create(exp_data)
+                await self.expenses.create(exp_data, store_id=1)  # TODO: multi-store sync (Phase 2)
             counts["expenses"] = len(data.expenses)
 
         # Sync stock movements
         if data.stock_movements:
             for mov_data in data.stock_movements:
-                await self.stock_movements.create(mov_data)
+                await self.stock_movements.create(mov_data, store_id=1)  # TODO: multi-store sync (Phase 2)
             counts["stock_movements"] = len(data.stock_movements)
 
         # Sync hold bills
         if data.hold_bills:
             for bill_data in data.hold_bills:
-                await self.hold_bills.create(bill_data)
+                await self.hold_bills.create(bill_data, store_id=1)  # TODO: multi-store sync (Phase 2)
             counts["hold_bills"] = len(data.hold_bills)
 
         return SyncResponse(
@@ -99,12 +99,12 @@ class SyncService:
         # Get all data (default store for now — TODO: multi-store backup in Phase 2)
         products, _ = await self.products.list(page=1, page_size=10000, active_only=False, store_id=1)
         sales, _ = await self.sales.list(page=1, page_size=10000, store_id=1)
-        purchases, _ = await self.purchases.list(page=1, page_size=10000)
-        debts, _ = await self.debts.list(page=1, page_size=10000)
-        expenses, _ = await self.expenses.list(page=1, page_size=10000)
-        stock_movements, _ = await self.stock_movements.list(page=1, page_size=10000)
-        hold_bills, _ = await self.hold_bills.list(page=1, page_size=10000)
-        settings = await self.settings.list()
+        purchases, _ = await self.purchases.list(page=1, page_size=10000, store_id=1)
+        debts, _ = await self.debts.list(page=1, page_size=10000, store_id=1)
+        expenses, _ = await self.expenses.list(page=1, page_size=10000, store_id=1)
+        stock_movements, _ = await self.stock_movements.list(page=1, page_size=10000, store_id=1)
+        hold_bills, _ = await self.hold_bills.list(page=1, page_size=10000, store_id=1)
+        settings = await self.settings.list(store_id=1)
         category_mappings = await self.category_mappings.list()
 
         return {

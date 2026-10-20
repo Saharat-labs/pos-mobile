@@ -236,6 +236,7 @@ async def create_user(
     full_name: str = None,
     role: str = "staff",
     is_superuser: bool = False,
+    store_id: int = 1,
 ) -> User:
     """Create new user."""
     # Check if email exists
@@ -256,6 +257,7 @@ async def create_user(
         role=role,
         is_superuser=is_superuser,
         is_active=True,
+        store_id=store_id,
     )
     db.add(user)
     await db.commit()
