@@ -38,13 +38,8 @@ jobs:
           pip install pytest pytest-asyncio pytest-cov httpx
 
       - name: Run backend tests
-        # รันเฉพาะ test ชุดที่ผ่าน (test เก่า 57 ตัว fail จากบั๊กเดิม ยังไม่รวม)
         run: |
-          python -m pytest tests/test_product_service.py \
-                          tests/test_sale_service.py \
-                          tests/test_integration.py \
-                          tests/test_auth_ws.py \
-                          -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+          python -m pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
         env:
           PYTHONPATH: .
           DATA_DIR: ./data

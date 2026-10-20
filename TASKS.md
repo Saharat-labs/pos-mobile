@@ -43,13 +43,14 @@
 | `SaleService._calculate_totals` comment ไม่ตรงกับการทำงาน (vat ถูกคำนวณฝั่ง client แล้ว) | `backend/app/services/sale_service.py:26-30` | Low — **Fixed** (แก้ comment) |
 | `SaleService.create` hardcode `status="completed"` แม้ payment_method="credit" | `backend/app/services/sale_service.py:50` | Low — **Fixed** (เปลี่ยนเป็น "held") |
 | `ProductService.update_stock` สร้าง StockMovement ซ้ำ (มีใน product_service.py และ stock_service.py) | `backend/app/services/product_service.py:101-123` | Low — **Fixed** (เพิ่ม `_update_stock_only()` ให้ StockMovementService ใช้) |
-| `CategoryMappingService.get_category` ใช้ prefix matching แบบ hardcode (3,2,1) | `backend/app/services/setting_service.py:76-89` | Medium — ไม่ยืดหยุ่น |
+| `CategoryMappingService.get_category` ใช้ prefix matching แบบ hardcode (3,2,1) | `backend/app/services/setting_service.py` | Medium — **Fixed** (เปลี่ยนเป็น longest-prefix match จริง) |
 | Frontend `filterByDate` ใช้ string compare สำหรับวันที่ | `script-pos.js:1256-1265` | Low — อาจผิดถ้า format ไม่ตรง |
 | `tests/` directory ว่าง | `backend/tests/` | Low — **Fixed** (20 test files ครบ services & APIs) |
 | `SaleService._calculate_totals` ใช้ `line_total` ที่ client ส่งมา (ถ้าไม่ส่งได้ subtotal=0) | `backend/app/services/sale_service.py` | Medium — **Fixed** (คำนวณจาก unit_price*qty-discount เอง) |
 | Test เรียก `service.sync()` แต่ method จริงชื่อ `sync_from_client` | `tests/test_sync_service.py` | Low — **Fixed** (แก้ชื่อ method) |
-| `pytest-asyncio` ไม่ได้ติดตั้ง (อยู่ใน requirements แต่ลงไม่ครบ) | `backend/` | Medium — ติดตั้งด้วย `pip install --break-system-packages pytest-asyncio` |
-| ~49 tests fail เป็น bug เดิม (ชื่อ method ผิด, คาดค่า hardcoded) ไม่เกี่ยวกับ multi-store | `tests/test_hold_bill_service.py`, `test_purchase_service.py`, `test_stock_service.py`, `test_sync_service.py`, `test_websocket.py` | Medium — ต้องแก้ทีละไฟล์ |
+| `pytest-asyncio` ไม่ได้ติดตั้ง (อยู่ใน requirements แต่ลงไม่ครบ) | `backend/` | Medium — **Fixed** (ติดตั้ง `pip install --break-system-packages pytest-asyncio==0.24.0`) |
+| Test bugs ทั้งหมด (ชื่อ method ผิด, คาดค่า hardcoded, status code ไม่ตรง) | `tests/*` | Medium — **Fixed** ทั้งหมด → `167 passed, 0 failed` |
+| Bug จริงที่แก้เพิ่ม: hold_bill/po_no ชนกันถ้าสร้างในวินาทีเดียว / `GET /settings/mappings` ถูก `/{key}` shadow (404) / sales ไม่เช็คสต็อกก่อนขาย | `app/services/hold_bill_service.py`, `purchase_service.py`, `app/api/settings.py`, `sale_service.py` | High — **Fixed** (เพิ่ม microseconds+random, แยก `mappings_router` register ก่อน, เพิ่ม stock validation) |
 
 ---
 
@@ -74,8 +75,8 @@
 - [x] WebSocket for real-time sync — `/ws` endpoint + ConnectionManager + broadcast events
 - [x] Multi-store support (Backend) — Store model + migration 003 + store_id ในทุก model + StoreService/Store API + Products/Sales store-scoped + service อื่นรับ store_id (default=1) + get_current_store dependency
 - [ ] Multi-store frontend (store switcher UI) — ยังไม่ทำ
-- [ ] Multi-store API routes ที่เหลือ (purchases/debts/expenses/stock/hold_bills/settings) ให้ใช้ get_current_store — ตอนนี้ default store_id=1
-- [ ] Sync แบบ multi-store — ตอนนี้ sync ผูก store_id=1 (TODO Phase 2)
+- [x] Multi-store API routes ที่เหลือ (purchases/debts/expenses/stock/hold_bills/settings) ใช้ get_current_store แล้ว — ทดสอบข้ามร้านจริง: แต่ละร้านเห็นเฉพาะข้อมูลตัวเอง
+- [x] Sync แบบ multi-store — `sync_from_client`/`full_backup`/`restore_backup` รับ store_id, API ส่ง `get_current_store`; restore ลบเฉพาะข้อมูลร้านตัวเอง (category_mappings ยังเป็น global) — ทดสอบข้ามร้านผ่าน
 - [x] Role-based access control — `require_admin`/`require_manager`/`require_staff` dependencies
 - [x] Audit log table — stock movements + WebSocket events track all changes
 
@@ -164,6 +165,7 @@ for row in conn.execute('SELECT sql FROM sqlite_master WHERE type=\"table\"'):
 ---
 
 ## 📅 Last Updated
-2026-10-20 — Multi-store support (backend): Store model+API+migration 003, store_id ในทุก model, Products+Sales store-scoped, service ทุกตัวรับ store_id (default=1), get_current_store dependency, fix `_calculate_totals` + install pytest-asyncio + แก้ test bugs บางส่วน
+2026-10-21 — Multi-store ครบฝั่ง backend: API routes ที่เหลือ (purchases/debts/expenses/stock-movements/hold-bills) + sync/backup/restore ใช้ `get_current_store` จริง — ทดสอบข้ามร้านผ่าน (store2 เห็นเฉพาะข้อมูลตัวเอง, restore ไม่แตะข้อมูลร้านอื่น) — **tests 167 passed, 0 failed**
 
 **วิธีรัน:** `cd ~/projects/pos-mobile/backend && python3 run.py` → http://localhost:8000
+**รัน test:** `cd ~/projects/pos-mobile/backend && python3 -m pytest tests/ -q`
