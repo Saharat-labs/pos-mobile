@@ -47,6 +47,7 @@ jobs:
                           -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
         env:
           PYTHONPATH: .
+          DATA_DIR: ./data
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
