@@ -165,7 +165,7 @@ for row in conn.execute('SELECT sql FROM sqlite_master WHERE type=\"table\"'):
 ---
 
 ## 📅 Last Updated
-2026-10-21 — Multi-store ครบฝั่ง backend: API routes ที่เหลือ (purchases/debts/expenses/stock-movements/hold-bills) + sync/backup/restore ใช้ `get_current_store` จริง — ทดสอบข้ามร้านผ่าน (store2 เห็นเฉพาะข้อมูลตัวเอง, restore ไม่แตะข้อมูลร้านอื่น) — **tests 167 passed, 0 failed**
+2026-10-21 — แก้ 🔴A restore/sync ตัด stock ซ้ำ: ตอน sync/restore สร้าง sale + stock movement แบบ `deduct_stock=False` (stock ใน payload เป็นค่าปัจจุบันอยู่แล้ว ห้ามหัก/บวกซ้ำ), sale item ผูก product ใหม่ด้วย `product_code` (id เปลี่ยนหลัง restore), และ `bulk_create` upsert ไม่ให้ payload ทับ `store_id` (sync สินค้าซ้ำรอบ 2 เดิมพัง NOT NULL) — **tests 169 passed, 0 failed** (ใหม่ 2: sync ไม่ตัดซ้ำ + restore backup ที่มีขายสำเร็จ)
 
 **วิธีรัน:** `cd ~/projects/pos-mobile/backend && python3 run.py` → http://localhost:8000
-**รัน test:** `cd ~/projects/pos-mobile/backend && python3 -m pytest tests/ -q`
+**รัน test:** `cd ~/projects/pos-mobile/backend && PYTHONPATH=/usr/lib/python3/dist-packages:/data/data/com.termux/files/usr/lib/python3.14/site-packages python3 -m pytest tests/ -q`

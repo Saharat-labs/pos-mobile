@@ -373,6 +373,95 @@ class TestSyncService:
         assert restored is not None
 
     @pytest.mark.asyncio
+    async def test_sync_sales_does_not_double_deduct_stock(self, test_session: AsyncSession):
+        """🔴A: stock ใน payload เป็นค่าปัจจุบัน — sync sales ห้ามตัด stock ซ้ำ"""
+        product_service = ProductService(test_session)
+        await product_service.create(ProductCreate(
+            code="NODEDUCT01",
+            name="No Deduct",
+            price=Decimal("50.00"),
+            stock=10,
+        ))
+
+        service = SyncService(test_session)
+        sync_data = SyncRequest(
+            products=[ProductCreate(
+                code="NODEDUCT01",
+                name="No Deduct",
+                price=Decimal("50.00"),
+                stock=10,
+            )],
+            sales=[SaleCreate(
+                customer_name="Sync A",
+                payment_method="cash",
+                paid_amount=Decimal("150.00"),
+                items=[SaleItemCreate(
+                    product_id=999999,  # id เก่าปลอม — ต้องผูกใหม่ด้วย code
+                    product_code="NODEDUCT01",
+                    product_name="No Deduct",
+                    quantity=3,
+                    unit_price=Decimal("50.00"),
+                    line_total=Decimal("150.00"),
+                )],
+            )],
+        )
+
+        result = await service.sync_from_client(sync_data)
+
+        assert result.success is True
+        assert result.counts["sales"] == 1
+        # stock ต้องเท่ากับค่าใน payload (10) ไม่ใช่ 10-3=7
+        restored_product = await product_service.get_by_code("NODEDUCT01")
+        assert restored_product.stock == 10
+
+        # sale item ต้องผูก product ใหม่ถูกต้องด้วย product_code
+        sales, total = await SaleService(test_session).list(store_id=1)
+        assert total == 1
+        sale_detail = await SaleService(test_session).get(sales[0].id, store_id=1)
+        assert sale_detail.items[0].product_id == restored_product.id
+
+    @pytest.mark.asyncio
+    async def test_restore_with_sales_keeps_stock(self, test_session: AsyncSession):
+        """🔴A: restore backup ที่มีขาย ต้องสำเร็จ + stock คงค่าเดิม (ไม่ตัดซ้ำ)"""
+        product_service = ProductService(test_session)
+        sale_service = SaleService(test_session)
+
+        product = await product_service.create(ProductCreate(
+            code="RESTORE002",
+            name="Restore Kit",
+            price=Decimal("100.00"),
+            stock=5,
+        ))
+        # ขายจริง 4 ชิ้น → stock เหลือ 1
+        await sale_service.create(SaleCreate(
+            customer_name="Restore B",
+            payment_method="cash",
+            paid_amount=Decimal("400.00"),
+            items=[SaleItemCreate(
+                product_id=product.id,
+                product_code="RESTORE002",
+                product_name="Restore Kit",
+                quantity=4,
+                unit_price=Decimal("100.00"),
+                line_total=Decimal("400.00"),
+            )],
+        ), store_id=1)
+
+        service = SyncService(test_session)
+        backup = await service.full_backup()
+        # เงื่อนไขที่เคยทำให้ล้มเหลว: stock ใน backup = 1 แต่ sale ย้อนหลัง qty = 4 (1 < 4)
+        # -> โค้ดเดิม ValueError → snapshot กู้ซ้ำก็ล้ม → ข้อมูลหาย
+        restore_result = await service.restore_backup(backup)
+
+        assert restore_result.success is True
+        assert restore_result.counts["sales"] == 1
+
+        restored_product = await product_service.get_by_code("RESTORE002")
+        assert restored_product.stock == 1  # คงค่าจาก backup ไม่ถูกหักซ้ำ (1-4 ติดลบ)
+        _, total = await sale_service.list(store_id=1)
+        assert total == 1
+
+    @pytest.mark.asyncio
     async def test_health_check(self, test_session: AsyncSession):
         """Test health check endpoint (route function, no service method)."""
         from app.api.sync import health_check

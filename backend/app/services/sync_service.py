@@ -33,8 +33,8 @@ class SyncService:
         self.settings = SettingService(db)
         self.category_mappings = CategoryMappingService(db)
 
-    async def sync_from_client(self, data: SyncRequest) -> SyncResponse:
-        """Sync data from client (localStorage) to backend."""
+    async def sync_from_client(self, data: SyncRequest, store_id: int = 1) -> SyncResponse:
+        """Sync data from client (localStorage) to backend (scoped to store_id)."""
         counts = {}
 
         # Sync category mappings first (needed for product auto-categorization)
@@ -44,48 +44,59 @@ class SyncService:
 
         # Sync settings
         if data.settings:
-            await self.settings.bulk_set(data.settings)
+            await self.settings.bulk_set(data.settings, store_id=store_id)
             counts["settings"] = len(data.settings)
 
         # Sync products
         if data.products:
-            await self.products.bulk_create(data.products, store_id=1)
+            await self.products.bulk_create(data.products, store_id=store_id)
             counts["products"] = len(data.products)
 
-        # Sync sales
+        # Sync sales — บันทึกเป็นประวัติอย่างเดียว ห้ามตัด stock ซ้ำ
+        # (stock ใน payload มากับค่าปัจจุบันอยู่แล้ว + id สินค้าเปลี่ยนหลัง restore
+        #  จึงผูก sale item ใหม่ด้วย product_code ก่อนเสมอ)
         if data.sales:
+            code_to_id = {}
+            rows = await self.db.execute(
+                select(Product.id, Product.code).where(Product.store_id == store_id)
+            )
+            for pid, pcode in rows.all():
+                code_to_id[pcode] = pid
             for sale_data in data.sales:
-                await self.sales.create(sale_data, store_id=1)  # TODO: multi-store sync (Phase 2)
+                for item in sale_data.items:
+                    if item.product_code in code_to_id:
+                        item.product_id = code_to_id[item.product_code]
+                await self.sales.create(sale_data, store_id=store_id, deduct_stock=False)
             counts["sales"] = len(data.sales)
 
         # Sync purchases
         if data.purchases:
             for po_data in data.purchases:
-                await self.purchases.create(po_data, store_id=1)  # TODO: multi-store sync (Phase 2)
+                await self.purchases.create(po_data, store_id=store_id)
             counts["purchases"] = len(data.purchases)
 
         # Sync debts
         if data.debts:
             for debt_data in data.debts:
-                await self.debts.create(debt_data, store_id=1)  # TODO: multi-store sync (Phase 2)
+                await self.debts.create(debt_data, store_id=store_id)
             counts["debts"] = len(data.debts)
 
         # Sync expenses
         if data.expenses:
             for exp_data in data.expenses:
-                await self.expenses.create(exp_data, store_id=1)  # TODO: multi-store sync (Phase 2)
+                await self.expenses.create(exp_data, store_id=store_id)
             counts["expenses"] = len(data.expenses)
 
-        # Sync stock movements
+        # Sync stock movements — บันทึกเป็นประวัติอย่างเดียว ห้ามบวก/ลบ stock ซ้ำ
         if data.stock_movements:
             for mov_data in data.stock_movements:
-                await self.stock_movements.create(mov_data, store_id=1)  # TODO: multi-store sync (Phase 2)
+                await self.stock_movements.create(mov_data, store_id=store_id, deduct_stock=False)
             counts["stock_movements"] = len(data.stock_movements)
 
         # Sync hold bills
         if data.hold_bills:
             for bill_data in data.hold_bills:
-                await self.hold_bills.create(bill_data, store_id=1)  # TODO: multi-store sync (Phase 2)
+                await self.hold_bills.create(bill_data, store_id=store_id)
             counts["hold_bills"] = len(data.hold_bills)
 
         return SyncResponse(
@@ -94,17 +105,16 @@ class SyncService:
             counts=counts
         )
 
-    async def full_backup(self) -> dict:
-        """Create full backup of all data."""
-        # Get all data (default store for now — TODO: multi-store backup in Phase 2)
-        products, _ = await self.products.list(page=1, page_size=10000, active_only=False, store_id=1)
-        sales, _ = await self.sales.list(page=1, page_size=10000, store_id=1)
-        purchases, _ = await self.purchases.list(page=1, page_size=10000, store_id=1)
-        debts, _ = await self.debts.list(page=1, page_size=10000, store_id=1)
-        expenses, _ = await self.expenses.list(page=1, page_size=10000, store_id=1)
-        stock_movements, _ = await self.stock_movements.list(page=1, page_size=10000, store_id=1)
-        hold_bills, _ = await self.hold_bills.list(page=1, page_size=10000, store_id=1)
-        settings = await self.settings.list(store_id=1)
+    async def full_backup(self, store_id: int = 1) -> dict:
+        """Create full backup of all data (scoped to store_id)."""
+        products, _ = await self.products.list(page=1, page_size=10000, active_only=False, store_id=store_id)
+        sales, _ = await self.sales.list(page=1, page_size=10000, store_id=store_id)
+        purchases, _ = await self.purchases.list(page=1, page_size=10000, store_id=store_id)
+        debts, _ = await self.debts.list(page=1, page_size=10000, store_id=store_id)
+        expenses, _ = await self.expenses.list(page=1, page_size=10000, store_id=store_id)
+        stock_movements, _ = await self.stock_movements.list(page=1, page_size=10000, store_id=store_id)
+        hold_bills, _ = await self.hold_bills.list(page=1, page_size=10000, store_id=store_id)
+        settings = await self.settings.list(store_id=store_id)
         category_mappings = await self.category_mappings.list()
 
         return {
@@ -259,23 +269,56 @@ class SyncService:
             ],
         }
 
-    async def restore_backup(self, data: dict) -> SyncResponse:
-        """Restore from backup data (replaces all data)."""
-        # Clear existing data (in reverse dependency order)
-        await self.db.execute(delete(SaleItem))
-        await self.db.execute(delete(Sale))
-        await self.db.execute(delete(PurchaseItem))
-        await self.db.execute(delete(Purchase))
-        await self.db.execute(delete(DebtPayment))
-        await self.db.execute(delete(Debt))
-        await self.db.execute(delete(Expense))
-        await self.db.execute(delete(StockMovement))
-        await self.db.execute(delete(HoldBill))
-        await self.db.execute(delete(Product))
-        await self.db.execute(delete(Setting))
-        await self.db.execute(delete(CategoryMapping))
-        await self.db.commit()
+    async def restore_backup(self, data: dict, store_id: int = 1) -> SyncResponse:
+        """Restore from backup data (replaces current store's data).
 
-        # Restore from backup
-        sync_request = SyncRequest(**data)
-        return await self.sync_from_client(sync_request)
+        ก่อนลบข้อมูลเดิม จะสำรองข้อมูลของร้านนี้ไว้ก่อน ถ้ากู้คืนล้มกลางทาง
+        จะย้อนข้อมูลเดิมกลับให้อัตโนมัติ (sub-service commit เองทุกตัว จึงใช้
+        transaction เดียวครอบทั้งกระบวนการไม่ได้)
+        """
+        # 1) validate payload ก่อนลบอะไรทั้งสิ้น — payload ผิดรูปต้องไม่ทำข้อมูลหาย
+        try:
+            sync_request = SyncRequest(**data)
+        except Exception as exc:
+            raise ValueError(f"ไฟล์สำรองไม่ถูกต้อง: {exc}") from exc
+
+        # 2) สำรองข้อมูลปัจจุบันของร้านนี้ (เผื่อ rollback)
+        snapshot = await self.full_backup(store_id=store_id)
+
+        # 3) ลบข้อมูลเดิมของร้านนี้ (เรียงตาม dependency จากมากไปน้อย)
+        try:
+            sale_ids = select(Sale.id).where(Sale.store_id == store_id)
+            await self.db.execute(delete(SaleItem).where(SaleItem.sale_id.in_(sale_ids)))
+            await self.db.execute(delete(Sale).where(Sale.store_id == store_id))
+            purchase_ids = select(Purchase.id).where(Purchase.store_id == store_id)
+            await self.db.execute(delete(PurchaseItem).where(PurchaseItem.purchase_id.in_(purchase_ids)))
+            await self.db.execute(delete(Purchase).where(Purchase.store_id == store_id))
+            debt_ids = select(Debt.id).where(Debt.store_id == store_id)
+            await self.db.execute(delete(DebtPayment).where(DebtPayment.debt_id.in_(debt_ids)))
+            await self.db.execute(delete(Debt).where(Debt.store_id == store_id))
+            await self.db.execute(delete(Expense).where(Expense.store_id == store_id))
+            await self.db.execute(delete(StockMovement).where(StockMovement.store_id == store_id))
+            await self.db.execute(delete(HoldBill).where(HoldBill.store_id == store_id))
+            await self.db.execute(delete(Product).where(Product.store_id == store_id))
+            await self.db.execute(delete(Setting).where(Setting.store_id == store_id))
+            await self.db.commit()
+        except Exception as exc:
+            await self.db.rollback()
+            raise ValueError(f"ลบข้อมูลเดิมไม่สำเร็จ: {exc}") from exc
+
+        # 4) กู้คืนข้อมูลจากไฟล์ ถ้าล้มให้ย้อนข้อมูลเดิมกลับทันที
+        try:
+            return await self.sync_from_client(sync_request, store_id=store_id)
+        except Exception as exc:
+            try:
+                await self.db.rollback()
+                await self._restore_snapshot(snapshot, store_id=store_id)
+            except Exception as rollback_exc:  # pragma: no cover - แจ้งให้ทราบทั้งสองฝั่ง
+                raise ValueError(
+                    f"กู้คืนไม่สำเร็จ และย้อนข้อมูลเดิมก็ไม่สำเร็จ: {exc} / {rollback_exc}"
+                ) from exc
+            raise ValueError(f"กู้คืนไม่สำเร็จ ย้อนข้อมูลเดิมแล้ว: {exc}") from exc
+
+    async def _restore_snapshot(self, snapshot: dict, store_id: int = 1) -> None:
+        """เขียนข้อมูลจาก snapshot กลับเข้าร้านนี้ (ใช้ตอน rollback)"""
+        await self.sync_from_client(SyncRequest(**snapshot), store_id=store_id)

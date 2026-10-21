@@ -1,7 +1,7 @@
 """Product service - business logic for products."""
 
 from typing import Optional, List
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models import Product, SaleItem, StockMovement
@@ -125,33 +125,78 @@ class ProductService:
         reference_type: str = None, reference_id: int = None, notes: str = None,
         store_id: int = 1
     ) -> Optional[Product]:
-        """Update product stock and create movement record (public API)."""
+        """Update product stock and create movement record (public API).
+
+        allow_negative=False ทำให้การตัดสต๊อกที่ทำให้ค่าติดลบถูกปฏิเสธ —
+        ใช้กับการขาย เพื่อกันขายเกินสต๊อกเมื่อมีคำขอพร้อมกัน
+        """
         return await self._update_stock(
             product_id, quantity, movement_type, reference_type, reference_id,
-            notes, create_movement=True, store_id=store_id
+            notes, create_movement=True, store_id=store_id,
+            allow_negative=movement_type != "out",
         )
 
-    async def _update_stock_only(self, product_id: int, quantity: int, store_id: int = 1) -> Optional[Product]:
+    async def _update_stock_only(
+        self, product_id: int, quantity: int, store_id: int = 1,
+        allow_negative: bool = True,
+    ) -> Optional[Product]:
         """Internal: update stock quantity only, no movement record."""
         return await self._update_stock(
             product_id, quantity, "adjust", None, None, None,
-            create_movement=False, store_id=store_id
+            create_movement=False, store_id=store_id,
+            allow_negative=allow_negative,
         )
 
     async def _update_stock(
         self, product_id: int, quantity: int, movement_type: str,
         reference_type: str, reference_id: int, notes: str,
-        create_movement: bool, store_id: int = 1
+        create_movement: bool, store_id: int = 1, allow_negative: bool = True,
     ) -> Optional[Product]:
-        """Internal: update stock with optional movement creation."""
+        """Internal: update stock with optional movement creation.
+
+        ใช้ UPDATE ... SET stock = stock + :q แบบ atomic เพื่อกันการขายเกินสต๊อก
+        เมื่อมีคำขอหลายตัวพร้อมกัน (เดิมอ่านค่าแล้วบวกใน Python ทำให้สองคำขอ
+        อ่านค่าเดิมเท่ากันแล้วขายได้ทั้งคู่)
+
+        allow_negative=False -> ปฏิเสธถ้าผลลัพธ์ติดลบ (ใช้กับการขาย)
+        """
         product = await self.get(product_id, store_id)
         if not product:
             return None
 
         old_stock = product.stock
-        product.stock += quantity
+
+        if quantity < 0 and not allow_negative:
+            # ลดสต๊อกแบบมีการบังคับ: เงื่อนไข stock + quantity >= 0 ถูกตรวจที่ฐานข้อมูล
+            # ถ้าคำขออื่นตัดสต๊อกไปก่อนแล้ว แถวจะไม่ถูกอัปเดต -> รู้ทันทีว่าของไม่พอ
+            result = await self.db.execute(
+                update(Product)
+                .where(Product.id == product_id)
+                .where(Product.store_id == store_id)
+                .where(Product.stock + quantity >= 0)
+                .values(stock=Product.stock + quantity)
+            )
+            if result.rowcount == 0:
+                await self.db.rollback()
+                current = await self.get(product_id, store_id)
+                available = current.stock if current else old_stock
+                raise ValueError(
+                    f"Insufficient stock for {product.name}: "
+                    f"available {available}, requested {abs(quantity)}"
+                )
+        else:
+            await self.db.execute(
+                update(Product)
+                .where(Product.id == product_id)
+                .where(Product.store_id == store_id)
+                .values(stock=Product.stock + quantity)
+            )
 
         if create_movement:
+            new_stock_row = await self.db.execute(
+                select(Product.stock).where(Product.id == product_id)
+            )
+            new_stock = new_stock_row.scalar_one()
             movement = StockMovement(
                 product_id=product_id,
                 store_id=store_id,
@@ -159,7 +204,7 @@ class ProductService:
                 quantity=abs(quantity),
                 reference_type=reference_type,
                 reference_id=reference_id,
-                notes=notes or f"Stock {movement_type}: {old_stock} -> {product.stock}",
+                notes=notes or f"Stock {movement_type}: {old_stock} -> {new_stock}",
             )
             self.db.add(movement)
 
@@ -231,8 +276,11 @@ class ProductService:
         for p_data in products:
             existing = await self.get_by_code(p_data.code, store_id)
             if existing:
-                # Update existing
+                # Update existing — ไม่ให้ payload ทับ store_id
+                # (ProductCreate.store_id เป็น Optional=None ถ้าทับจะชน NOT NULL)
                 for field, value in p_data.model_dump().items():
+                    if field == "store_id":
+                        continue
                     setattr(existing, field, value)
                 created.append(existing)
             else:

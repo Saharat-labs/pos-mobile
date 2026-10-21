@@ -215,6 +215,14 @@ function esc(s) {
   return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// ── ESCAPE สำหรับค่าใน JS string ที่อยู่ใน inline handler ──
+// เช่น onclick="setCatFilter('...')"  — esc() อย่างเดียวไม่พอ เพราะเบราว์เซอร์
+// ถอด &#39; กลับเป็น ' ก่อนแยกวิเคราะห์ JS ทำให้หลุดออกจาก string ได้
+// ใช้ JSON.stringify แล้ว escape HTML ของผลลัพธ์ จึงได้ "..."; ปลอดภัยในทุกบริบท
+function escJs(s) {
+  return esc(JSON.stringify(String(s??'')));
+}
+
 // ── CATEGORY FUNCTIONS ──────────────────────────
 function getCategoryFromProductId(productId) {
   if (!productId || typeof productId !== 'string') return 'อื่นๆ';
@@ -402,7 +410,7 @@ function renderMasterSearch() {
   if (!results.length) { listEl.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px">ไม่พบสินค้า</p>'; return; }
   listEl.innerHTML = results.map(m => {
     const added = existingIds.has(m.i);
-    return `<div class="prod-list-item" style="cursor:pointer;${added?'opacity:.5':''}" onclick="${added?'':`selectMasterProduct('${m.i}')`}">
+    return `<div class="prod-list-item" style="cursor:pointer;${added?'opacity:.5':''}" onclick="${added?'':`selectMasterProduct(${escJs(m.i)})`}">
       <div class="pli-name">${esc(m.n)}${added ? ' <span style="font-size:11px;color:var(--text-muted)">(มีในร้านแล้ว)</span>' : ''}</div>
       <div class="pli-meta">รหัส: ${esc(m.i)} · Barcode: ${esc(m.b)} · ${esc(m.c)}</div>
     </div>`;
@@ -700,8 +708,8 @@ function renderProducts() {
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <span class="pli-stock ${stockCls}">${stockLabel}</span>
         <div style="display:flex;gap:6px">
-          <button class="btn-icon" onclick="openProductModal('${p.id}')">✏️</button>
-          <button class="btn-icon" onclick="deleteProduct('${p.id}')">🗑️</button>
+          <button class="btn-icon" onclick="openProductModal(${escJs(p.id)})">✏️</button>
+          <button class="btn-icon" onclick="deleteProduct(${escJs(p.id)})">🗑️</button>
         </div>
       </div>
     </div>`;
@@ -724,7 +732,7 @@ function renderPosProducts() {
   if(!list.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🔍</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
   grid.innerHTML=list.map(p=>{
     const lowCls=p.stock<=0?'no-stock':p.stock<=settings.lowStock?'low-stock':'';
-    return `<div class="product-card ${lowCls}" onclick="clickProduct('${p.id}')">
+    return `<div class="product-card ${lowCls}" onclick="clickProduct(${escJs(p.id)})">
       <div class="pc-name">${esc(p.name)}</div>
       <div class="pc-product_id">รหัส: ${esc(p.product_id||'-')}</div>
       <div class="pc-barcode">Barcode: ${esc(p.barcode||'-')}</div>
@@ -738,7 +746,7 @@ function updateCatChips() {
   const cats = getAllCategories();
   const c=document.getElementById('pos-cat-scroll'); if(!c) return;
   c.innerHTML=`<button class="cat-chip ${!posCurrentCat?'active':''}" onclick="setCatFilter('')">ทั้งหมด</button>`+
-    cats.map(cat=>`<button class="cat-chip ${posCurrentCat===cat?'active':''}" onclick="setCatFilter('${esc(cat)}')">${esc(cat)}</button>`).join('');
+    cats.map(cat=>`<button class="cat-chip ${posCurrentCat===cat?'active':''}" onclick="setCatFilter(${escJs(cat)})">${esc(cat)}</button>`).join('');
 }
 
 function setCatFilter(cat) {
@@ -1197,9 +1205,9 @@ function renderDebts(){
         <div class="debt-amount">${fmt(out)}</div>
       </div>
       <div class="debt-footer">
-        ${!isPaid?`<button class="btn btn-amber btn-sm" style="flex:1" onclick="openPayDebt('${d.id}')">💰 รับชำระ</button>`:''}
-        <button class="btn-icon" onclick="openDebtModal('${d.id}')">✏️</button>
-        <button class="btn-icon" onclick="deleteDebt('${d.id}')">🗑️</button>
+        ${!isPaid?`<button class="btn btn-amber btn-sm" style="flex:1" onclick="openPayDebt(${escJs(d.id)})">💰 รับชำระ</button>`:''}
+        <button class="btn-icon" onclick="openDebtModal(${escJs(d.id)})">✏️</button>
+        <button class="btn-icon" onclick="deleteDebt(${escJs(d.id)})">🗑️</button>
       </div>
     </div>`;
   }).join('');

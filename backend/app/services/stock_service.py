@@ -17,8 +17,12 @@ class StockMovementService:
         self.db = db
         self.product_service = ProductService(db)
 
-    async def create(self, data: StockMovementCreate, store_id: int = 1) -> StockMovement:
-        """Create stock movement and update product stock."""
+    async def create(self, data: StockMovementCreate, store_id: int = 1, deduct_stock: bool = True) -> StockMovement:
+        """Create stock movement and update product stock.
+
+        deduct_stock=False ใช้ตอน sync/restore เท่านั้น: stock ใน payload
+        เป็นค่าปัจจุบันอยู่แล้ว บันทึก movement เป็นประวัติอย่างเดียว
+        """
         movement = StockMovement(
             store_id=store_id,
             product_id=data.product_id,
@@ -31,11 +35,12 @@ class StockMovementService:
         self.db.add(movement)
 
         # Update product stock (internal, no duplicate movement)
-        qty_change = data.quantity
-        if data.movement_type in ("out", "waste"):
-            qty_change = -data.quantity
+        if deduct_stock:
+            qty_change = data.quantity
+            if data.movement_type in ("out", "waste"):
+                qty_change = -data.quantity
 
-        await self.product_service._update_stock_only(data.product_id, qty_change, store_id)
+            await self.product_service._update_stock_only(data.product_id, qty_change, store_id)
 
         await self.db.commit()
         await self.db.refresh(movement)

@@ -59,18 +59,23 @@ class SaleService:
             total = taxable + vat
         return subtotal, vat, total
 
-    async def create(self, data: SaleCreate, store_id: int) -> Sale:
-        """Create new sale with items."""
+    async def create(self, data: SaleCreate, store_id: int, deduct_stock: bool = True) -> Sale:
+        """Create new sale with items.
+
+        deduct_stock=False ใช้ตอน sync/restore เท่านั้น: stock ใน payload
+        เป็นค่าปัจจุบันอยู่แล้ว ห้ามตัดซ้ำ (ยอดขายประวัติ = บันทึกอย่างเดียว)
+        """
         # Validate stock availability before creating the sale
-        for item_data in data.items:
-            product = await self.product_service.get(item_data.product_id, store_id)
-            if not product:
-                raise ValueError(f"Product {item_data.product_code} not found")
-            if product.stock < item_data.quantity:
-                raise ValueError(
-                    f"Insufficient stock for {item_data.product_name}: "
-                    f"available {product.stock}, requested {item_data.quantity}"
-                )
+        if deduct_stock:
+            for item_data in data.items:
+                product = await self.product_service.get(item_data.product_id, store_id)
+                if not product:
+                    raise ValueError(f"Product {item_data.product_code} not found")
+                if product.stock < item_data.quantity:
+                    raise ValueError(
+                        f"Insufficient stock for {item_data.product_name}: "
+                        f"available {product.stock}, requested {item_data.quantity}"
+                    )
 
         # Calculate totals with VAT based on backend setting
         vat_mode = await self._get_vat_mode(store_id)
@@ -112,15 +117,16 @@ class SaleService:
             )
             self.db.add(item)
 
-            # Update stock (out)
-            await self.product_service.update_stock(
-                product_id=item_data.product_id,
-                quantity=-item_data.quantity,
-                movement_type="out",
-                reference_type="sale",
-                reference_id=sale.id,
-                store_id=store_id,
-            )
+            # Update stock (out) — ข้ามเมื่อ sync/restore (stock มาพร้อม payload แล้ว)
+            if deduct_stock:
+                await self.product_service.update_stock(
+                    product_id=item_data.product_id,
+                    quantity=-item_data.quantity,
+                    movement_type="out",
+                    reference_type="sale",
+                    reference_id=sale.id,
+                    store_id=store_id,
+                )
 
         await self.db.commit()
         await self.db.refresh(sale)
