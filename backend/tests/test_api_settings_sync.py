@@ -267,3 +267,19 @@ class TestSyncAPI:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["database"] == "connected"
+
+    @pytest.mark.asyncio
+    async def test_health_check_head(self, client: AsyncClient):
+        """HEAD /api/v1/sync/health (used by the frontend's online detection) returns 200 with no body."""
+        response = await client.head("/api/v1/sync/health")
+
+        assert response.status_code == 200
+        assert response.content == b""
+
+    @pytest.mark.asyncio
+    async def test_health_check_get_unchanged_after_head_support(self, client: AsyncClient):
+        """GET still returns the same JSON shape."""
+        response = await client.get("/api/v1/sync/health")
+
+        assert response.status_code == 200
+        assert set(response.json()) == {"status", "database", "timestamp"}

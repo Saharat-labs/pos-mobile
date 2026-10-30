@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Data directory (for Termux/Android)
-    DATA_DIR: Path = Path("/data/data/com.termux/files/home/pos-mobile-data")
+    # Data directory (default: ~/pos-mobile-data; on Termux = /data/data/com.termux/files/home/pos-mobile-data)
+    DATA_DIR: Path = Path.home() / "pos-mobile-data"
 
     class Config:
         env_file = ".env"
@@ -46,6 +46,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-# Ensure data directory exists
-settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
