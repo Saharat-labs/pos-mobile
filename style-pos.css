@@ -359,6 +359,16 @@ tr:active td { background: var(--surface2); }
 #scanner-zoom-wrap { flex: 1; display: flex; align-items: center; gap: 8px; }
 #scanner-zoom { flex: 1; }
 
+/* ── KEYBOARD SHORTCUTS ──────────────────── */
+.shortcut-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.shortcut-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.shortcut-table td:first-child { white-space: nowrap; width: 1%; padding-right: 12px; }
+kbd {
+  display: inline-block; min-width: 22px; padding: 2px 6px;
+  font-family: var(--mono); font-size: 12px; text-align: center;
+  background: var(--surface3); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px;
+}
+
 /* ── OFFLINE INDICATOR ───────────────────── */
 .offline-indicator {
   position: fixed;

@@ -1999,6 +1999,41 @@ function initOnlineDetection() {
 }
 
 // ═══════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════
+function closeTopModal() {
+  if (document.getElementById('modal-scanner').classList.contains('open')) return stopScanner();
+  const open = [...document.querySelectorAll('.modal-overlay.open')];
+  if (open.length) return closeModal(open[open.length - 1].id);
+  if (document.getElementById('cart-sheet').classList.contains('open')) return closeCartSheet();
+  if (document.getElementById('sidebar').classList.contains('open')) closeMenu();
+}
+function focusPosSearch() {
+  if (currentPage !== 'pos') showPage('pos');
+  const input = document.getElementById('pos-search-input');
+  input.focus(); input.select();
+}
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'Escape') { closeTopModal(); return; }
+    const typing = e.target.closest('input, textarea, select, [contenteditable="true"]');
+    // ปุ่ม F ใช้ได้แม้กำลังพิมพ์ในช่องค้นหา; ปุ่มตัวอักษรใช้ได้เฉพาะตอนไม่ได้พิมพ์
+    const actions = {
+      F2: focusPosSearch,
+      F4: openCartSheet,
+      F8: openPayment,
+      F9: holdCurrentCart,
+      ...(typing ? {} : { '/': focusPosSearch, '?': () => openModal('modal-shortcuts') }),
+    };
+    const fn = actions[e.key];
+    if (!fn) return;
+    e.preventDefault();
+    fn();
+  });
+}
+
+// ═══════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
@@ -2007,6 +2042,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   setActiveNav(currentPage);
   runPageInit(currentPage);
   initOnlineDetection();
+  initKeyboardShortcuts();
 
   // ซ่อนปุ่ม "เพิ่มจากรายการสินค้ากลาง" ถ้าโปรเจกต์ไม่มีไฟล์ master-products.js
   if (typeof MASTER_PRODUCTS === 'undefined') {
