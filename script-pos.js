@@ -1808,49 +1808,103 @@ async function scanBarcodeFromPhoto(event) {
   }
 }
 
-// ── SCAN BARCODE ─────────────────────────────────
-async function scanBarcode() {
+// ── LIVE SCANNER (กล้องสด + ไฟฉาย + ซูม) ─────────
+let _scan = null; // { stream, track, raf, onCode }
+
+async function openLiveScanner(onCode) {
+  if (!('BarcodeDetector' in window)) {
+    toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'warning');
+    return;
+  }
+  stopScanner();
+  const video = document.getElementById('scanner-video');
+  const torchBtn = document.getElementById('scanner-torch');
+  const zoomWrap = document.getElementById('scanner-zoom-wrap');
+  const zoom = document.getElementById('scanner-zoom');
   try {
-    if (!('BarcodeDetector' in window)) {
-      toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'warning');
-      return;
-    }
     const detector = new BarcodeDetector();
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = document.createElement('video');
+    const track = stream.getVideoTracks()[0];
+    _scan = { stream, track, raf: 0, onCode, torch: false };
     video.srcObject = stream;
-    video.setAttribute('playsinline', '');
-    video.style.width = '1px';
-    video.style.height = '1px';
-    video.style.position = 'absolute';
-    video.style.top = '-100px';
-    document.body.appendChild(video);
-    
+    openModal('modal-scanner');
     await video.play();
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    stream.getTracks().forEach(t => t.stop());
-    video.remove();
-    
-    const barcodes = await detector.detect(canvas);
-    if (barcodes.length > 0) {
-      const code = barcodes[0].rawValue;
-      document.getElementById('pos-search-input').value = code;
-      addFirstResult();
-      toast('พบ Barcode: ' + code, 'success');
+
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    torchBtn.style.display = caps.torch ? '' : 'none';
+    torchBtn.classList.remove('active');
+    if (caps.zoom) {
+      const cur = track.getSettings().zoom ?? caps.zoom.min;
+      Object.assign(zoom, { min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1, value: cur });
+      zoomWrap.style.display = '';
     } else {
-      toast('ไม่พบบาร์โค้ดในภาพ', 'warning');
+      zoomWrap.style.display = 'none';
     }
+
+    let last = 0, busy = false;
+    const loop = async t => {
+      if (!_scan || _scan.stream !== stream) return;
+      _scan.raf = requestAnimationFrame(loop);
+      if (busy || t - last < 150 || video.readyState < 2) return;
+      last = t; busy = true;
+      try {
+        const codes = await detector.detect(video);
+        if (codes.length && _scan && _scan.stream === stream) {
+          const code = codes[0].rawValue;
+          navigator.vibrate?.(80);
+          stopScanner();
+          onCode(code);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        busy = false;
+      }
+    };
+    _scan.raf = requestAnimationFrame(loop);
   } catch (err) {
+    stopScanner();
     toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'error');
     console.error(err);
   }
 }
 
+function stopScanner() {
+  if (_scan) {
+    cancelAnimationFrame(_scan.raf);
+    _scan.stream.getTracks().forEach(t => t.stop());
+    _scan = null;
+  }
+  const video = document.getElementById('scanner-video');
+  if (video) video.srcObject = null;
+  closeModal('modal-scanner');
+}
+
+async function toggleTorch() {
+  if (!_scan) return;
+  try {
+    await _scan.track.applyConstraints({ advanced: [{ torch: !_scan.torch }] });
+    _scan.torch = !_scan.torch;
+    document.getElementById('scanner-torch').classList.toggle('active', _scan.torch);
+  } catch (err) {
+    toast('เปิดไฟฉายไม่สำเร็จ', 'error');
+    console.error(err);
+  }
+}
+
+function setScannerZoom(value) {
+  if (!_scan) return;
+  _scan.track.applyConstraints({ advanced: [{ zoom: +value }] }).catch(err => console.error(err));
+}
+
+// ── SCAN BARCODE ─────────────────────────────────
+function scanBarcode() {
+  openLiveScanner(code => {
+    document.getElementById('pos-search-input').value = code;
+    addFirstResult();
+    toast('พบ Barcode: ' + code, 'success');
+  });
+}
 // ── SCAN BARCODE → ฟอร์มเพิ่ม/แก้ไขสินค้า ─────────
 async function scanBarcodeFromPhotoToProductForm(event) {
   const file = event.target.files[0];
@@ -1876,44 +1930,11 @@ async function scanBarcodeFromPhotoToProductForm(event) {
   }
 }
 
-async function scanBarcodeToProductForm() {
-  try {
-    if (!('BarcodeDetector' in window)) {
-      toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'warning');
-      return;
-    }
-    const detector = new BarcodeDetector();
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.setAttribute('playsinline', '');
-    video.style.width = '1px';
-    video.style.height = '1px';
-    video.style.position = 'absolute';
-    video.style.top = '-100px';
-    document.body.appendChild(video);
-
-    await video.play();
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    stream.getTracks().forEach(t => t.stop());
-    video.remove();
-
-    const barcodes = await detector.detect(canvas);
-    if (barcodes.length > 0) {
-      document.getElementById('pm-barcode').value = barcodes[0].rawValue;
-      toast('พบ Barcode: ' + barcodes[0].rawValue, 'success');
-    } else {
-      toast('ไม่พบบาร์โค้ดในภาพ', 'warning');
-    }
-  } catch (err) {
-    toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'error');
-    console.error(err);
-  }
+function scanBarcodeToProductForm() {
+  openLiveScanner(code => {
+    document.getElementById('pm-barcode').value = code;
+    toast('พบ Barcode: ' + code, 'success');
+  });
 }
 
 // ═══════════════════════════════════════════════
