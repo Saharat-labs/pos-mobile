@@ -198,6 +198,9 @@ const fmt = n => '฿' + (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2
 const fmtN= n => (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const ymd  = d => { const x=new Date(d); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const today= ()=> ymd(new Date());
+// วันที่ (YYYY-MM-DD ตามเวลาเครื่อง) ของค่าที่เป็น ISO timestamp เช่น sale.date; ค่าที่เป็น YYYY-MM-DD อยู่แล้วใช้ตามนั้น
+// (ห้าม slice ISO ตรง ๆ เพราะเป็นเวลา UTC — ขายตอน 00:00–07:00 ที่ไทยจะไปตกเป็นวันก่อนหน้า)
+const localDay = v => { const s=String(v||''); return s.length>10 ? ymd(s) : s.slice(0,10); };
 const uid  = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const thDate= d=> d ? new Date(d).toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'}) : '-';
 const thTime= d=> d ? new Date(d).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -1065,6 +1068,9 @@ function finalizeCreditSale(name,phone,note){
   sales.push(sale);
   debts.push({id:uid(),customer:name,phone,billNo,billId:sale.id,amount:total,paid:0,date:today(),note:note||sale.items.map(i=>i.name).join(', '),status:'ค้าง',payments:[]});
   save(); cart=[]; updateCartFab(); closeModal('cart-sheet'); renderPosProducts();
+  // เหมือน newBill(): ล้างส่วนลด และเลื่อนเลขบิลที่หัวหน้าขายไปบิลถัดไป
+  document.getElementById('cs-discount-val').value=0;
+  document.getElementById('pos-bill-no').textContent='บิล #B'+String(billCounter).padStart(5,'0');
   toast(`ขายเชื่อ ${name} ${fmt(total)}`,'info');
 }
 function holdCurrentCart(){
@@ -1337,7 +1343,7 @@ function filterByDate(list,fromId,toId,df='date'){
   const from=document.getElementById(fromId)?.value;
   const to=document.getElementById(toId)?.value;
   return list.filter(x=>{
-    const raw=(x[df]||'').slice(0,10);
+    const raw=localDay(x[df]);
     if(!raw) return false;
     // Parse as local date (YYYY-MM-DD) to avoid timezone issues
     const parts=raw.split('-');
@@ -1366,7 +1372,7 @@ function renderSalesReport(){
   document.getElementById('rs-avg').textContent=list.length?fmt(total/list.length):'฿0';
 
   const dayMap={};
-  list.forEach(s=>{const d=s.date.slice(0,10);dayMap[d]=(dayMap[d]||0)+s.total;});
+  list.forEach(s=>{const d=localDay(s.date);dayMap[d]=(dayMap[d]||0)+s.total;});
   const labels=Object.keys(dayMap).sort();
   const ctx=document.getElementById('salesChart');
   if(salesChartInst) salesChartInst.destroy();
@@ -1428,7 +1434,7 @@ function setCompareRange(mode){
 }
 function periodSummary(from,to){
   const list=sales.filter(s=>{
-    const raw=(s.date||'').slice(0,10);
+    const raw=localDay(s.date);
     if(!raw) return false;
     const parts=raw.split('-');
     const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
@@ -1655,7 +1661,13 @@ function importExcel(event) {
         const stock = (stockRaw!==undefined && stockRaw!=='') ? (parseInt(stockRaw)||0) : null;
         const expiryRaw = row['วันที่เริ่มจำหน่าย'] || row['วันหมดอายุ'] || '';
         let expiry = '';
-        if (expiryRaw) {
+        if (typeof expiryRaw === 'number') {
+          // เซลล์ชนิดวันที่ใน Excel อ่านออกมาเป็นเลข serial (เช่น 46461) ไม่ใช่ข้อความ
+          const dc = XLSX.SSF.parse_date_code(expiryRaw);
+          if (dc && dc.y > 1900) expiry = `${dc.y}-${String(dc.m).padStart(2,'0')}-${String(dc.d).padStart(2,'0')}`;
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(String(expiryRaw).trim())) {
+          expiry = String(expiryRaw).trim(); // YYYY-MM-DD ใช้ตามนั้น ไม่ผ่าน Date (กันวันเลื่อนตาม timezone)
+        } else if (expiryRaw) {
           const d = new Date(expiryRaw);
           if (!isNaN(d)) expiry = ymd(d);
         }
@@ -1826,14 +1838,18 @@ async function openLiveScanner(onCode) {
   const torchBtn = document.getElementById('scanner-torch');
   const zoomWrap = document.getElementById('scanner-zoom-wrap');
   const zoom = document.getElementById('scanner-zoom');
+  let stream = null;
+  // ผู้ใช้ปิดหน้าสแกน (Esc/ปิด/แตะพื้นหลัง) ระหว่างที่กล้องกำลังเริ่ม → ไม่ใช่ข้อผิดพลาด
+  const cancelled = () => !_scan || _scan.stream !== stream;
   try {
     const detector = new BarcodeDetector();
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     const track = stream.getVideoTracks()[0];
     _scan = { stream, track, raf: 0, onCode, torch: false };
     video.srcObject = stream;
     openModal('modal-scanner');
     await video.play();
+    if (cancelled()) return;
 
     const caps = track.getCapabilities ? track.getCapabilities() : {};
     torchBtn.style.display = caps.torch ? '' : 'none';
@@ -1868,6 +1884,7 @@ async function openLiveScanner(onCode) {
     };
     _scan.raf = requestAnimationFrame(loop);
   } catch (err) {
+    if (stream && cancelled()) { stream.getTracks().forEach(t => t.stop()); return; }
     stopScanner();
     toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่มถ่าย/เลือกรูปแทน', 'error');
     console.error(err);
