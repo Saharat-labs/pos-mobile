@@ -354,6 +354,10 @@ tr:active td { background: var(--surface2); }
 .offline-indicator.hidden {
   display: none;
 }
+.offline-indicator.warn {
+  background: var(--amber);
+  color: #0F1623;
+}
 @keyframes slideDown {
   from { transform: translateY(-100%); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }

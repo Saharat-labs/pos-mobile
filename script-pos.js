@@ -1875,30 +1875,39 @@ function seedDemoData(){
 function initOnlineDetection() {
   const indicator = document.getElementById('offline-indicator');
   if (!indicator) return;
+  const text = indicator.querySelector('.offline-text');
 
-  function updateOnlineStatus() {
-    if (navigator.onLine) {
-      indicator.classList.add('hidden');
-      document.body.classList.remove('offline-active');
-    } else {
-      indicator.classList.remove('hidden');
-      document.body.classList.add('offline-active');
-    }
+  // null = ไม่รู้สถานะ/ไม่มี backend (เช่นเปิดผ่าน file://) → ไม่แจ้งเตือนเรื่องเซิร์ฟเวอร์
+  let serverReachable = null;
+  let wasOffline = !navigator.onLine;
+
+  function render() {
+    const offline = !navigator.onLine;
+    const serverDown = !offline && serverReachable === false;
+    if (offline) text.textContent = 'ออฟไลน์ — ข้อมูลยังบันทึกในเครื่องตามปกติ';
+    else if (serverDown) text.textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ข้อมูลบันทึกในเครื่อง';
+    indicator.classList.toggle('hidden', !offline && !serverDown);
+    indicator.classList.toggle('warn', serverDown);
+    document.body.classList.toggle('offline-active', offline || serverDown);
+    if (wasOffline && !offline) toast('กลับมาออนไลน์แล้ว', 'success');
+    wasOffline = offline;
   }
 
-  // Initial check
-  updateOnlineStatus();
-
-  // Listen for online/offline events
-  window.addEventListener('online', updateOnlineStatus);
-  window.addEventListener('offline', updateOnlineStatus);
-
-  // Periodic check (every 30 seconds) to catch cases where browser doesn't fire events
-  setInterval(() => {
+  function checkServer() {
+    if (location.protocol === 'file:' || !navigator.onLine) return render();
     fetch('/api/v1/sync/health', { method: 'HEAD', cache: 'no-store' })
-      .then(() => { if (!navigator.onLine) updateOnlineStatus(); })
-      .catch(() => { if (navigator.onLine) updateOnlineStatus(); });
-  }, 30000);
+      // 404/405/501 = static server ที่ไม่มี backend → ถือว่าไม่รู้สถานะ ไม่ใช่ล่ม
+      .then(res => { serverReachable = res.ok ? true : ([404, 405, 501].includes(res.status) ? null : false); })
+      .catch(() => { serverReachable = serverReachable === null ? null : false; })
+      .finally(render);
+  }
+
+  render();
+  checkServer();
+  window.addEventListener('online', checkServer);
+  window.addEventListener('offline', render);
+  // ตรวจซ้ำทุก 30 วินาที เผื่อเบราว์เซอร์ไม่ยิง event หรือเซิร์ฟเวอร์ล่ม
+  setInterval(checkServer, 30000);
 }
 
 // ═══════════════════════════════════════════════
