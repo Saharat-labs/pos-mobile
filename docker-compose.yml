@@ -51,26 +51,7 @@ services:
       - ./backup:/backup
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////data/pos_mobile.db
-    command: >
-      sh -c "
-        python3 -c '
-import sqlite3, json, datetime, os
-conn = sqlite3.connect(\"/data/pos_mobile.db\")
-conn.row_factory = sqlite3.Row
-cursor = conn.cursor()
-tables = [\"products\",\"sales\",\"sale_items\",\"purchases\",\"purchase_items\",
-          \"debts\",\"debt_payments\",\"expenses\",\"stock_movements\",
-          \"hold_bills\",\"settings\",\"category_mappings\"]
-data = {}
-for t in tables:
-    cursor.execute(f\"SELECT * FROM {t}\")
-    data[t] = [dict(row) for row in cursor.fetchall()]
-ts = datetime.datetime.utcnow().strftime(\"%Y%m%d_%H%M%S\")
-with open(f\"/backup/pos_mobile_backup_{ts}.json\", \"w\") as f:
-    json.dump({\"timestamp\": ts, \"version\": \"1.0.0\", \"data\": data}, f, ensure_ascii=False, indent=2)
-print(f\"Backup saved to /backup/pos_mobile_backup_{ts}.json\")
-        '
-      "
+    command: ["python", "scripts/backup_db.py"]
 
 volumes:
   backend-data:
