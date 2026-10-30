@@ -1,16 +1,17 @@
 # 🛒 POS-MOBILE
 
-### ระบบขายหน้าร้าน (Point of Sale) สำหรับมือถือ — ทำงานในเบราว์เซอร์ 100%
+### ระบบขายหน้าร้าน (Point of Sale) สำหรับมือถือ — frontend ทำงานในเบราว์เซอร์ และมี backend (FastAPI) เสริมให้เลือกรัน
 
 ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=flat-square&logo=html5&logoColor=white)
 ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=flat-square&logo=css3&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)
-![No Backend](https://img.shields.io/badge/Backend-ไม่ต้องมี-brightgreen?style=flat-square)
+![FastAPI](https://img.shields.io/badge/Backend-FastAPI_(ไม่บังคับ)-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=flat-square&logo=docker&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
 🔗 **ใช้งานจริง:** https://saharatyokthuan.github.io/pos-mobile/
 
-> ⚠️ ข้อมูลของแอปเก็บไว้ใน `localStorage` ของเบราว์เซอร์เครื่องนั้น ๆ เท่านั้น ไม่มีการส่งขึ้นเซิร์ฟเวอร์
+> ⚠️ หน้าเว็บ (`script-pos.js`) ยังเก็บข้อมูลไว้ใน `localStorage` ของเบราว์เซอร์เครื่องนั้น ๆ เท่านั้น — **ยังไม่ได้เรียก backend API เพื่อบันทึก/ดึงข้อมูล** (ดู [สถาปัตยกรรม](#-สถาปัตยกรรม)) ส่วน `backend/` เป็น API ที่รันแยกได้
 
 ---
 
@@ -20,7 +21,16 @@
 📦 POS-MOBILE
 ├── 🌐 index.html          → หน้าเว็บทั้งหมดแบบ single-page (header, sidebar, ทุกหน้า, ทุก modal)
 ├── 🎨 style-pos.css       → ธีมสี, เลย์เอาต์, responsive, สไตล์การพิมพ์ใบเสร็จ
-└── ⚙️ script-pos.js       → ลอจิกทั้งหมด: จัดการข้อมูล, render, คำนวณ, นำทางระหว่างหน้า
+├── ⚙️ script-pos.js       → ลอจิกทั้งหมด: จัดการข้อมูล, render, คำนวณ, นำทางระหว่างหน้า
+├── 📱 manifest.json, sw.js, icons/ → PWA (manifest, service worker, ไอคอน)
+├── 🖥️ backend/            → FastAPI + SQLAlchemy + Alembic (ดู backend/README.md)
+├── 🐳 docker-compose.yml  → รัน backend + frontend (nginx) พร้อมกัน
+├── 🐳 Dockerfile          → image ของ backend (build จาก root, copy backend/)
+├── 🐳 nginx.Dockerfile    → image ของ frontend (nginx:alpine)
+├── 🔧 nginx.conf          → config nginx: static, /api/ → backend, /health
+├── 📘 PROJECT.md, USER_GUIDE.md, TASKS.md → เอกสารโปรเจกต์
+├── 📄 LICENSE             → MIT
+└── 🧪 .github/workflows/ci-cd.yml → CI/CD
 ```
 
 ทุกหน้าอยู่ใน `index.html` ไฟล์เดียว สลับหน้าด้วย JavaScript (`showPage()`) ไม่มีการโหลดหน้าใหม่
@@ -37,6 +47,12 @@
 ```
 
 ถ้าไม่มีไฟล์ ระบบจะซ่อนปุ่มดังกล่าวให้อัตโนมัติ (แอปยังใช้งานส่วนอื่นได้ครบถ้วน)
+
+## 🏗️ สถาปัตยกรรม
+
+- **Frontend** (`index.html` + `script-pos.js`): อ่าน/เขียนข้อมูลผ่าน `localStorage` (key ขึ้นต้น `qpos_`) ทั้งหมด
+- **Backend** (`backend/`): REST API + WebSocket บน FastAPI/SQLite มี endpoint ครบสำหรับสินค้า ขาย สั่งซื้อ ลูกหนี้ รายจ่าย ฯลฯ รวมถึง `/api/v1/sync` สำหรับรับข้อมูลจาก localStorage
+- **ที่ตรวจพบในโค้ด:** `script-pos.js` เรียก backend เพียงจุดเดียว คือ `fetch('/api/v1/sync/health', { method: 'HEAD' })` ทุก 30 วินาทีเพื่อตรวจสถานะออนไลน์ (`initOnlineDetection`) — ไม่มีการซิงก์หรือโหลดข้อมูลจาก API ดังนั้นการใช้งานจริงตอนนี้ยังเป็นแบบ localStorage ล้วน และ backend ยังไม่ได้ต่อกับหน้าเว็บ
 
 ## ✨ ฟีเจอร์หลัก
 
@@ -57,7 +73,7 @@
 
 ## 💾 การเก็บข้อมูล
 
-ข้อมูลทั้งหมดเก็บใน `localStorage` ของเบราว์เซอร์ — ไม่มีการส่งขึ้นเซิร์ฟเวอร์ ข้อมูลอยู่เฉพาะในเครื่อง/เบราว์เซอร์นั้น ๆ
+ข้อมูลทั้งหมดที่หน้าเว็บใช้เก็บใน `localStorage` ของเบราว์เซอร์ — หน้าเว็บไม่ได้ส่งข้อมูลขึ้น backend ข้อมูลอยู่เฉพาะในเครื่อง/เบราว์เซอร์นั้น ๆ
 แนะนำให้สำรองข้อมูล (JSON) เป็นประจำ เพราะการล้างข้อมูลเบราว์เซอร์จะลบข้อมูลทั้งหมด
 
 ## 🚀 วิธีใช้งาน
@@ -65,7 +81,33 @@
 - **ออนไลน์:** เปิด https://saharatyokthuan.github.io/pos-mobile/
 - **ในเครื่อง:** เปิดไฟล์ `index.html` ในเบราว์เซอร์ได้ทันที — ไม่ต้อง build ไม่ต้อง install
 
+- **รัน backend (ไม่บังคับ):** ดู [backend/README.md](backend/README.md) หรือหัวข้อ docker compose ด้านล่าง
+
 > ฟีเจอร์สแกนบาร์โค้ดด้วยกล้องต้องเปิดผ่าน `https://` หรือ `localhost` เท่านั้น (ข้อกำหนดด้านความปลอดภัยของเบราว์เซอร์)
+
+## 🐳 รันด้วย docker compose
+
+`docker-compose.yml` มี service ดังนี้:
+
+| Service | Image / build | Port | หน้าที่ |
+|:---|:---|:---|:---|
+| `backend` | build จาก `./backend` (`backend/Dockerfile`) | `8000:8000` | FastAPI API, เก็บ SQLite ที่ volume `backend-data` (`/data/pos_mobile.db`), healthcheck `/api/v1/sync/health` |
+| `frontend` | `nginx:alpine` | `8080:80` | เสิร์ฟไฟล์ static จาก root ของ repo (mount ที่ `/usr/share/nginx/html`) ใช้ `nginx.conf`, ส่ง `/api/` ต่อไปที่ `backend:8000`, มี `/health` |
+| `backup` | build จาก `./backend` | - | ทำ backup ตาราง SQLite เป็น JSON ไปที่ `./backup` — เปิดเฉพาะเมื่อใช้ profile `backup` |
+
+```bash
+docker compose up --build              # เริ่ม backend + frontend
+# หน้าเว็บ:   http://localhost:8080
+# API docs:   http://localhost:8000/docs   (หรือผ่าน nginx ที่ http://localhost:8080/api/v1/...)
+
+docker compose --profile backup run --rm backup   # สำรองข้อมูลเป็น JSON ลง ./backup
+docker compose down                    # หยุด (ข้อมูลอยู่ใน volume backend-data)
+```
+
+หมายเหตุที่ตรวจจากไฟล์ตั้งค่า:
+- `nginx.conf` proxy เฉพาะ `/api/` — path WebSocket (`/ws`) ไม่ได้ถูก proxy ต้องต่อที่พอร์ต 8000 ตรง ๆ
+- `docker-compose.yml` mount `./backend/pos_mobile.db` เข้า `/app/pos_mobile.db` แบบ read-only (ถ้าไฟล์นี้ไม่มีบน host Docker จะสร้างเป็นโฟลเดอร์) ขณะที่ backend ใช้ DB จริงที่ `/data/pos_mobile.db`
+- `nginx.Dockerfile` (image แบบ copy ไฟล์ static เข้า nginx) ไม่ได้ถูกอ้างถึงใน `docker-compose.yml`
 
 ## 📦 Dependencies (โหลดผ่าน CDN + ตรวจสอบ SRI)
 
@@ -73,6 +115,8 @@
 |:---|:---|
 | [SheetJS (xlsx.js) 0.18.5](https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js) | นำเข้า/ส่งออกไฟล์ Excel |
 | [Chart.js 4.4.0](https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js) | กราฟในหน้ารายงาน |
+
+Backend: FastAPI, SQLAlchemy (async) + SQLite, Alembic, Pydantic, PyJWT, Uvicorn — รายละเอียดใน [backend/README.md](backend/README.md#-technologies)
 
 ## 📄 License
 
