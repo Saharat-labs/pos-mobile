@@ -1,5 +1,5 @@
 // POS-MOBILE Service Worker
-const CACHE_NAME = 'pos-mobile-v1';
+const CACHE_NAME = 'pos-mobile-v2';
 const ASSETS = [
   './',
   './index.html',

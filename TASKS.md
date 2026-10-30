@@ -61,20 +61,20 @@
 - [x] Fix `SaleService._calculate_totals` ให้คำนวณ VAT ถูกต้อง — backend คำนวณ VAT จาก setting "vat" mode (exclude/include/no)
 - [x] Add Alembic for DB migrations — initial migration created + stamped
 - [x] Add unit tests in `backend/tests/` — 20 test files ครบทุก services & APIs (product, sale, purchase, debt, expense, stock, hold_bill, setting, sync + API endpoints)
-- [ ] Add request validation (max page_size, etc.)
+- [x] Add request validation (max page_size, etc.) — list endpoints ใช้ `Query(ge=1, le=MAX_PAGE_SIZE)` ครบ รวม `GET /auth/users` ที่เคยไม่จำกัด (+ tests)
 
 ### Frontend Improvements
 - [x] Date filtering ใช้ Date object แทน string compare — `filterByDate()` แก้แล้ว
-- [ ] Add offline indicator UI
+- [x] Add offline indicator UI — แดง = ออฟไลน์, เหลือง = เชื่อม backend ไม่ได้ (health check ทุก 30 วิ, ข้าม static host ที่ไม่มี backend)
 - [x] Add PWA manifest + service worker — `manifest.json` + `sw.js` + `icons/`
-- [ ] Improve barcode scanner UX (torch, zoom)
-- [ ] Add keyboard shortcuts help modal
+- [x] Improve barcode scanner UX (torch, zoom) — `openLiveScanner()` มีพรีวิว สแกนต่อเนื่อง ไฟฉาย/ซูมตาม `track.getCapabilities()`
+- [x] Add keyboard shortcuts help modal — F2 / F4 F8 F9 Esc ? + `#modal-shortcuts`
 
 ### Backend Features
 - [x] Auth/Authorization (API keys, JWT) — register/login/refresh + API keys + roles (admin/manager/staff)
 - [x] WebSocket for real-time sync — `/ws` endpoint + ConnectionManager + broadcast events
 - [x] Multi-store support (Backend) — Store model + migration 003 + store_id ในทุก model + StoreService/Store API + Products/Sales store-scoped + service อื่นรับ store_id (default=1) + get_current_store dependency
-- [ ] Multi-store frontend (store switcher UI) — ยังไม่ทำ
+- [x] Multi-store frontend (store switcher UI) — แยกข้อมูลใน localStorage ต่อร้าน (ร้าน 1 = prefix `qpos_` เดิม, ร้านอื่น `qpos_s<id>_`) ยังไม่ผูกกับ store ของ backend
 - [x] Multi-store API routes ที่เหลือ (purchases/debts/expenses/stock/hold_bills/settings) ใช้ get_current_store แล้ว — ทดสอบข้ามร้านจริง: แต่ละร้านเห็นเฉพาะข้อมูลตัวเอง
 - [x] Sync แบบ multi-store — `sync_from_client`/`full_backup`/`restore_backup` รับ store_id, API ส่ง `get_current_store`; restore ลบเฉพาะข้อมูลร้านตัวเอง (category_mappings ยังเป็น global) — ทดสอบข้ามร้านผ่าน
 - [x] Role-based access control — `require_admin`/`require_manager`/`require_staff` dependencies
