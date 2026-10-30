@@ -331,6 +331,20 @@ tr:active td { background: var(--surface2); }
 .toast-warning { background: var(--amber); color: #0F1623; }
 @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+/* ── ICONS (SVG sprite) ──────────────────── */
+.icon {
+  width: 1.15em; height: 1.15em; flex-shrink: 0;
+  vertical-align: -0.2em;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.header-btn .icon, .nav-icon .icon { width: 22px; height: 22px; }
+.btn-icon .icon { width: 18px; height: 18px; }
+.empty-icon .icon { stroke-width: 1.5; opacity: 0.7; }
+#cart-fab > .icon { width: 26px; height: 26px; }
+.toast { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.toast .icon { width: 18px; height: 18px; }
+
 /* ── STORE SWITCHER ──────────────────────── */
 .header-subtitle { cursor: pointer; }
 .store-row {

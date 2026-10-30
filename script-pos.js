@@ -192,6 +192,8 @@ let posCurrentCat = '';
 // ═══════════════════════════════════════════════
 // UTILS
 // ═══════════════════════════════════════════════
+// ไอคอน SVG จาก sprite ใน index.html (#i-<name>, Lucide)
+const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const fmt = n => '฿' + (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN= n => (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const ymd  = d => { const x=new Date(d); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); };
@@ -210,11 +212,14 @@ const save = ()=>{
   DB.set('cart', cart);
 };
 
+const TOAST_ICONS = { success: 'circle-check', error: 'circle-x', warning: 'triangle-alert', info: 'info' };
 function toast(msg, type='success') {
   const c = document.getElementById('toast-container');
   if (!c) { console.warn(msg); return; }
   const t = document.createElement('div');
-  t.className = `toast toast-${type}`; t.textContent = msg;
+  t.className = `toast toast-${type}`;
+  t.innerHTML = icon(TOAST_ICONS[type] || 'info');
+  t.append(' ' + msg);
   c.appendChild(t);
   setTimeout(()=>t.remove(), 2800);
 }
@@ -271,7 +276,7 @@ function renderMapping() {
   const visibleMapping = showHiddenMappings ? categoryMapping : categoryMapping.filter(m => !hiddenMappingPrefixes.includes(m.prefix));
   const toggleBar = hiddenCount ? `
     <div class="mapping-hidden-bar" onclick="showHiddenMappings=!showHiddenMappings;renderMapping()">
-      ${showHiddenMappings ? `🔽 ซ่อนรายการที่ซ่อนไว้ (${hiddenCount})` : `▶️ แสดงรายการที่ซ่อนไว้ (${hiddenCount})`}
+      ${showHiddenMappings ? `${icon('chevron-down')} ซ่อนรายการที่ซ่อนไว้ (${hiddenCount})` : `${icon('chevron-right')} แสดงรายการที่ซ่อนไว้ (${hiddenCount})`}
     </div>` : '';
   list.innerHTML = toggleBar + visibleMapping.map((m) => {
     const i = categoryMapping.indexOf(m);
@@ -279,10 +284,10 @@ function renderMapping() {
     return `
     <div class="mapping-row ${isHidden?'mapping-row-hidden':''}">
       <span class="m-prefix">${esc(m.prefix)}</span>
-      <span class="m-arrow">→</span>
+      <span class="m-arrow">${icon('arrow-right')}</span>
       <span class="m-cat">${esc(m.name)}</span>
-      <button class="btn-icon" title="${isHidden?'แสดงรายการนี้':'ซ่อนรายการนี้'}" data-action="toggle-hide" data-prefix="${esc(m.prefix)}">${isHidden?'🙈':'👁️'}</button>
-      ${m.locked ? '<span title="หมวดหมู่ทางการ ถาวร ลบไม่ได้" style="opacity:.6">🔒</span>' : `<button class="btn-icon" data-action="delete-mapping" data-index="${i}">✕</button>`}
+      <button class="btn-icon" title="${isHidden?'แสดงรายการนี้':'ซ่อนรายการนี้'}" data-action="toggle-hide" data-prefix="${esc(m.prefix)}">${icon(isHidden?'eye-off':'eye')}</button>
+      ${m.locked ? '<span title="หมวดหมู่ทางการ ถาวร ลบไม่ได้" style="opacity:.6">'+icon('lock')+'</span>' : `<button class="btn-icon" data-action="delete-mapping" data-index="${i}">${icon('x')}</button>`}
     </div>`;
   }).join('');
 }
@@ -318,7 +323,7 @@ function recalculateAllCategories() {
   save();
   renderMapping(); updateCategorySelects(); updateCatChips();
   renderProducts(); renderPosProducts();
-  toast(`ปรับปรุงหมวดหมู่สินค้าทั้งหมด ${products.length} รายการแล้ว ✓`);
+  toast(`ปรับปรุงหมวดหมู่สินค้าทั้งหมด ${products.length} รายการแล้ว`);
 }
 
 function addMapping() {
@@ -341,7 +346,7 @@ function addMapping() {
   renderPosProducts();
   document.getElementById('mapping-prefix').value = '';
   document.getElementById('mapping-cat').value = '';
-  toast(updated ? `เพิ่มการแม็พแล้ว ✓ (อัปเดตสินค้า ${updated} รายการ)` : 'เพิ่มการแม็พแล้ว ✓');
+  toast(updated ? `เพิ่มการแม็พแล้ว (อัปเดตสินค้า ${updated} รายการ)` : 'เพิ่มการแม็พแล้ว');
 }
 
 function deleteMapping(index) {
@@ -472,12 +477,12 @@ function setActiveNav(name) {
   if (fab) fab.style.display = name === 'pos' ? 'flex' : 'none';
 
   const titles = {
-    pos:'🛒 ขายสินค้า', products:'📦 สินค้า',
-    purchase:'🚚 สั่งซื้อ', debt:'💳 ลูกหนี้',
-    reports:'📊 รายงาน', more:'☰ เมนู'
+    pos:icon('shopping-cart')+' ขายสินค้า', products:icon('package')+' สินค้า',
+    purchase:icon('truck')+' สั่งซื้อ', debt:icon('credit-card')+' ลูกหนี้',
+    reports:icon('chart-column')+' รายงาน', more:icon('menu')+' เมนู'
   };
   const titleEl = document.getElementById('topbar-title');
-  if (titleEl) titleEl.textContent = titles[name] || '';
+  if (titleEl) titleEl.innerHTML = titles[name] || '';
 }
 
 // Runs the same per-page setup that showPage() used to run inline, now
@@ -498,7 +503,7 @@ function runPageInit(name) {
   if (name === 'products') {
     if (topAction) {
       topAction.style.display = 'inline-flex';
-      topAction.textContent = '+ เพิ่มสินค้า';
+      topAction.innerHTML = icon('plus') + ' เพิ่มสินค้า';
       topAction.onclick = ()=>openProductModal();
     }
     updateCategorySelects(); renderProducts();
@@ -506,7 +511,7 @@ function runPageInit(name) {
   if (name === 'purchase') {
     if (topAction) {
       topAction.style.display = 'inline-flex';
-      topAction.textContent = '+ บันทึกซื้อ';
+      topAction.innerHTML = icon('plus') + ' บันทึกซื้อ';
       topAction.onclick = ()=>openPurchaseModal();
     }
     renderPurchases();
@@ -514,7 +519,7 @@ function runPageInit(name) {
   if (name === 'debt') {
     if (topAction) {
       topAction.style.display = 'inline-flex';
-      topAction.textContent = '+ เพิ่ม';
+      topAction.innerHTML = icon('plus') + ' เพิ่ม';
       topAction.onclick = ()=>openDebtModal();
     }
     renderDebts();
@@ -540,14 +545,14 @@ function openMenu() {
   document.getElementById('sidebar-overlay').classList.add('open');
   const btn = document.getElementById('hamburger-btn');
   btn.setAttribute('aria-expanded', 'true');
-  btn.textContent = '×';
+  btn.innerHTML = icon('x');
 }
 function closeMenu() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-overlay').classList.remove('open');
   const btn = document.getElementById('hamburger-btn');
   btn.setAttribute('aria-expanded', 'false');
-  btn.textContent = '☰';
+  btn.innerHTML = icon('menu');
 }
 function navigateFromMenu(name) {
   closeMenu();
@@ -576,14 +581,14 @@ function saveSettings() {
   settings.lowStock = +document.getElementById('set-low-stock').value;
   settings.expiryDays = +document.getElementById('set-expiry-days').value;
   settings.vat = document.getElementById('set-vat').value;
-  save(); updateHeaderSubtitle(); toast('บันทึกแล้ว ✓');
+  save(); updateHeaderSubtitle(); toast('บันทึกแล้ว');
 }
 function updateHeaderSubtitle() {
   const el = document.getElementById('header-subtitle');
   if (!el) return;
   const parts = [settings.storeCode, settings.storeName].filter(Boolean);
   if (stores.length > 1 && !parts.length) parts.push(currentStore().name);
-  el.textContent = (stores.length > 1 ? '🏪 ' : '') + parts.join(' · ') + (stores.length > 1 ? ' ▾' : '');
+  el.innerHTML = (stores.length > 1 ? icon('store') + ' ' : '') + esc(parts.join(' · ')) + (stores.length > 1 ? ' ' + icon('chevron-down') : '');
 }
 
 // ═══════════════════════════════════════════════
@@ -595,11 +600,11 @@ function renderStores() {
   document.getElementById('store-list').innerHTML = stores.map(s => {
     const active = s.id === currentStoreId;
     return `<div class="store-row${active ? ' active' : ''}">
-      <div class="store-row-name">${active ? '✓ ' : ''}${esc(s.name)}</div>
+      <div class="store-row-name">${active ? icon('check') + ' ' : ''}${esc(s.name)}</div>
       ${active ? '<span class="badge badge-teal">ใช้งานอยู่</span>'
                : `<button class="btn btn-primary btn-sm" onclick="switchStore(${s.id})">สลับ</button>`}
-      <button class="btn-icon" onclick="renameStore(${s.id})" title="เปลี่ยนชื่อ">✏️</button>
-      ${active || s.id === 1 ? '' : `<button class="btn-icon" onclick="deleteStore(${s.id})" title="ลบร้าน">🗑️</button>`}
+      <button class="btn-icon" onclick="renameStore(${s.id})" title="เปลี่ยนชื่อ">${icon('pencil')}</button>
+      ${active || s.id === 1 ? '' : `<button class="btn-icon" onclick="deleteStore(${s.id})" title="ลบร้าน">${icon('trash-2')}</button>`}
     </div>`;
   }).join('');
 }
@@ -626,7 +631,7 @@ function renameStore(id) {
 function deleteStore(id) {
   const s = stores.find(x => x.id === id);
   if (!s || id === 1 || id === currentStoreId) return;
-  if (!confirm(`⚠️ ลบร้าน "${s.name}" และข้อมูลทั้งหมดของร้านนี้ในเครื่อง? (กู้คืนไม่ได้)`)) return;
+  if (!confirm(`ลบร้าน "${s.name}" และข้อมูลทั้งหมดของร้านนี้ในเครื่อง? (กู้คืนไม่ได้)`)) return;
   const prefix = storePrefix(id);
   Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
   stores = stores.filter(x => x.id !== id);
@@ -646,7 +651,7 @@ function openSetting() {
   navigateFromMenu('more');
 }
 function clearAllData() {
-  if (!confirm(`⚠️ ล้างข้อมูลทั้งหมดของร้าน "${currentStore().name}"? (ร้านอื่นไม่ถูกลบ)`)) return;
+  if (!confirm(`ล้างข้อมูลทั้งหมดของร้าน "${currentStore().name}"? (ร้านอื่นไม่ถูกลบ)`)) return;
   products=[];sales=[];purchases=[];debts=[];expenses=[];holdBills=[];billCounter=1;
   save(); toast('ล้างข้อมูลแล้ว','warning'); showPage('pos');
 }
@@ -656,7 +661,7 @@ function clearAllData() {
 // ═══════════════════════════════════════════════
 function openProductModal(id=null) {
   editingProductId = id;
-  document.getElementById('prod-modal-title').textContent = id ? '✏️ แก้ไขสินค้า' : '+ เพิ่มสินค้า';
+  document.getElementById('prod-modal-title').innerHTML = id ? icon('pencil')+' แก้ไขสินค้า' : icon('plus')+' เพิ่มสินค้า';
   updateCategorySelects();
   populateProductTypeSelect('pm-type');
   if (id) {
@@ -721,7 +726,7 @@ function saveProduct() {
     if(idx!==-1){products[idx]=data;}
   } else products.push(data);
   save(); closeModal('modal-product'); renderProducts(); renderPosProducts();
-  toast(editingProductId?'แก้ไขแล้ว ✓':'เพิ่มสินค้าแล้ว ✓');
+  toast(editingProductId?'แก้ไขแล้ว':'เพิ่มสินค้าแล้ว');
 }
 function deleteProduct(id) {
   if (!confirm('ลบสินค้านี้?')) return;
@@ -754,7 +759,7 @@ function renderProducts() {
   nb.textContent=alerts; nb.style.display=alerts?'flex':'none';
 
   const c=document.getElementById('prod-list'); if(!c) return;
-  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
+  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('package')+'</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
 
   c.innerHTML=list.map(p=>{
     const stockCls=p.stock<=0?'stock-out':p.stock<=settings.lowStock?'stock-low':'stock-ok';
@@ -763,20 +768,20 @@ function renderProducts() {
     if(p.expiry){
       const exp=new Date(p.expiry);
       const cls=exp<new Date()?'expiry-danger':exp<=expWarn?'expiry-warn':'expiry-ok';
-      expiryTxt=`<div class="${cls}" style="font-size:11px;margin-top:3px">📅 ${thDate(p.expiry)}</div>`;
+      expiryTxt=`<div class="${cls}" style="font-size:11px;margin-top:3px">${icon('calendar')} ${thDate(p.expiry)}</div>`;
     }
     return `<div class="prod-list-item">
       <div class="pli-info">
         <div class="pli-name">${esc(p.name)}</div>
-        <div class="pli-meta">รหัส: <span class="pli-barcode">${esc(p.product_id||'-')}</span> · Barcode: ${esc(p.barcode||'-')} · ${esc(p.category||'-')}${p.type?` · 🏷️ ${esc(p.type)}`:''}</div>
+        <div class="pli-meta">รหัส: <span class="pli-barcode">${esc(p.product_id||'-')}</span> · Barcode: ${esc(p.barcode||'-')} · ${esc(p.category||'-')}${p.type?` · ${icon('tag')} ${esc(p.type)}`:''}</div>
         <div class="pli-price">${fmt(p.price)}</div>
         ${expiryTxt}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <span class="pli-stock ${stockCls}">${stockLabel}</span>
         <div style="display:flex;gap:6px">
-          <button class="btn-icon" onclick="openProductModal(${escJs(p.id)})">✏️</button>
-          <button class="btn-icon" onclick="deleteProduct(${escJs(p.id)})">🗑️</button>
+          <button class="btn-icon" onclick="openProductModal(${escJs(p.id)})">${icon('pencil')}</button>
+          <button class="btn-icon" onclick="deleteProduct(${escJs(p.id)})">${icon('trash-2')}</button>
         </div>
       </div>
     </div>`;
@@ -796,7 +801,7 @@ function renderPosProducts() {
     return p.name.toLowerCase().includes(q)||(p.product_id||'').includes(q)||(p.barcode||'').includes(q);
   });
   list.sort((a,b)=>(a.product_id||'').localeCompare(b.product_id||'',undefined,{numeric:true}));
-  if(!list.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🔍</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
+  if(!list.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">'+icon('search')+'</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
   grid.innerHTML=list.map(p=>{
     const lowCls=p.stock<=0?'no-stock':p.stock<=settings.lowStock?'low-stock':'';
     return `<div class="product-card ${lowCls}" onclick="clickProduct(${escJs(p.id)})">
@@ -804,7 +809,7 @@ function renderPosProducts() {
       <div class="pc-product_id">รหัส: ${esc(p.product_id||'-')}</div>
       <div class="pc-barcode">Barcode: ${esc(p.barcode||'-')}</div>
       <div class="pc-price">${fmt(p.price)}</div>
-      <div class="pc-stock">${p.stock<=0?'❌ หมด':`📦 ${p.stock}`}</div>
+      <div class="pc-stock">${p.stock<=0?icon('circle-x')+' หมด':`${icon('package')} ${p.stock}`}</div>
     </div>`;
   }).join('');
 }
@@ -875,7 +880,7 @@ function renderCart() {
   const badge=document.getElementById('cart-bill-badge');
   if(badge) badge.textContent='บิล #B'+String(billCounter).padStart(5,'0');
   if(!cart.length){
-    list.innerHTML='<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-text">ยังไม่มีสินค้า</div></div>';
+    list.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('shopping-cart')+'</div><div class="empty-text">ยังไม่มีสินค้า</div></div>';
   } else {
     list.innerHTML=cart.map((item,i)=>`
       <div class="cart-item">
@@ -1038,7 +1043,7 @@ function addDebtSale(){
   if(!cart.length){toast('ยังไม่มีสินค้า','warning');return;}
   creditSaleMode = true;
   editingDebtId = null;
-  document.getElementById('debt-modal-title').textContent = '💳 ขายเชื่อ';
+  document.getElementById('debt-modal-title').innerHTML = icon('credit-card')+' ขายเชื่อ';
   document.getElementById('dm-name').value = '';
   document.getElementById('dm-phone').value = '';
   const {total} = getCartTotal();
@@ -1111,7 +1116,7 @@ function addPurItem(){
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:flex-end">
       <div><label style="font-size:11px">จำนวน</label><input type="number" class="pr-qty" value="1" min="1" inputmode="numeric"></div>
       <div><label style="font-size:11px">ราคา/หน่วย</label><input type="number" class="pr-price" value="0" step="0.01" inputmode="decimal"></div>
-      <button class="btn-icon" style="margin-bottom:0" onclick="document.getElementById('pr-${id}').remove()">✕</button>
+      <button class="btn-icon" style="margin-bottom:0" onclick="document.getElementById('pr-${id}').remove()">${icon('x')}</button>
     </div>`;
   c.appendChild(d);
 }
@@ -1141,7 +1146,7 @@ function renderPurchases(){
   if(from) list=list.filter(x=>x.date>=from);
   if(to) list=list.filter(x=>x.date<=to);
   const c=document.getElementById('pur-list'); if(!c) return;
-  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">🚚</div><div class="empty-text">ไม่พบการสั่งซื้อ</div></div>';return;}
+  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('truck')+'</div><div class="empty-text">ไม่พบการสั่งซื้อ</div></div>';return;}
   c.innerHTML=[...list].reverse().map(p=>{
     const total=p.items.reduce((s,i)=>s+i.total,0);
     return `<div class="pur-list-item">
@@ -1184,7 +1189,7 @@ function openDebtModal(id=null){
   editingDebtId=id;
   creditSaleMode=false;
   document.getElementById('dm-amount').readOnly=false;
-  document.getElementById('debt-modal-title').textContent=id?'✏️ แก้ไข':'+ เพิ่มลูกหนี้';
+  document.getElementById('debt-modal-title').innerHTML=id?icon('pencil')+' แก้ไข':icon('plus')+' เพิ่มลูกหนี้';
   if(id){
     const d=debts.find(x=>x.id===id); if(!d) return;
     document.getElementById('dm-name').value=d.customer;
@@ -1254,7 +1259,7 @@ function renderDebts(){
   document.getElementById('debt-outstanding').textContent=fmt(outstanding);
   document.getElementById('debt-bill-count').textContent=debts.filter(d=>d.status==='ค้าง').length;
   const c=document.getElementById('debt-list'); if(!c) return;
-  if(!debts.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">💳</div><div class="empty-text">ไม่มีลูกหนี้</div></div>';return;}
+  if(!debts.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('credit-card')+'</div><div class="empty-text">ไม่มีลูกหนี้</div></div>';return;}
   c.innerHTML=debts.map(d=>{
     const out=d.amount-d.paid;
     const isPaid=d.status==='ชำระแล้ว';
@@ -1272,9 +1277,9 @@ function renderDebts(){
         <div class="debt-amount">${fmt(out)}</div>
       </div>
       <div class="debt-footer">
-        ${!isPaid?`<button class="btn btn-amber btn-sm" style="flex:1" onclick="openPayDebt(${escJs(d.id)})">💰 รับชำระ</button>`:''}
-        <button class="btn-icon" onclick="openDebtModal(${escJs(d.id)})">✏️</button>
-        <button class="btn-icon" onclick="deleteDebt(${escJs(d.id)})">🗑️</button>
+        ${!isPaid?`<button class="btn btn-amber btn-sm" style="flex:1" onclick="openPayDebt(${escJs(d.id)})">${icon('hand-coins')} รับชำระ</button>`:''}
+        <button class="btn-icon" onclick="openDebtModal(${escJs(d.id)})">${icon('pencil')}</button>
+        <button class="btn-icon" onclick="deleteDebt(${escJs(d.id)})">${icon('trash-2')}</button>
       </div>
     </div>`;
   }).join('');
@@ -1511,7 +1516,7 @@ function renderStockReport(){
         <div class="pli-meta">รหัส: ${esc(p.product_id||'-')} · Barcode: ${esc(p.barcode||'-')} · ${esc(p.category||'-')}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:3px;font-family:var(--mono)">ราคาขาย ${fmt(p.price)} · ทุน ${fmt(p.cost)} · มูลค่า ${fmt(p.stock*(p.cost||0))}</div>
       </div>
-      <span class="pli-stock ${stockCls}">${p.stock<=0?'หมด':p.stock<=settings.lowStock?`⚠️${p.stock}`:p.stock}</span>
+      <span class="pli-stock ${stockCls}">${p.stock<=0?'หมด':p.stock<=settings.lowStock?`${icon('triangle-alert')}${p.stock}`:p.stock}</span>
     </div>`;
   }).join('')||'<div class="empty-state"><div class="empty-text">ไม่มีสินค้า</div></div>';
 }
@@ -1693,7 +1698,7 @@ function importExcel(event) {
       renderPosProducts();
       updateCatChips();
       updateCategorySelects();
-      toast(`✅ นำเข้าแล้ว ${imported} รายการ (อัปเดต ${updated} รายการ)`, 'success');
+      toast(`นำเข้าแล้ว ${imported} รายการ (อัปเดต ${updated} รายการ)`, 'success');
     } catch (err) {
       toast('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'error');
       console.error(err);
@@ -1740,7 +1745,7 @@ function importMasterUpdate(event) {
       renderPosProducts();
       updateCatChips();
       updateCategorySelects();
-      toast(`✅ อัปเดตชื่อ+หมวดหมู่แล้ว ${updated} รายการ${notFound ? ` (ไม่พบสินค้า ${notFound} รายการ)` : ''}`, 'success');
+      toast(`อัปเดตชื่อ+หมวดหมู่แล้ว ${updated} รายการ${notFound ? ` (ไม่พบสินค้า ${notFound} รายการ)` : ''}`, 'success');
     } catch (err) {
       toast('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'error');
       console.error(err);
@@ -1757,7 +1762,7 @@ function exportBackupJSON(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download=`qpos-backup-${currentStore().name.replace(/[\\/:*?"<>|\s]+/g,'_')}-${today()}.json`; a.click();
   URL.revokeObjectURL(url);
-  toast('สำรองข้อมูลแล้ว ✓');
+  toast('สำรองข้อมูลแล้ว');
 }
 function importBackupJSON(event){
   const file=event.target.files[0]; if(!file) return;
@@ -1765,14 +1770,14 @@ function importBackupJSON(event){
   reader.onload=e=>{
     try{
       const data=JSON.parse(e.target.result);
-      if(!confirm('⚠️ การกู้คืนจะแทนที่ข้อมูลทั้งหมดในเครื่องนี้ ดำเนินการต่อ?')){event.target.value='';return;}
+      if(!confirm('การกู้คืนจะแทนที่ข้อมูลทั้งหมดในเครื่องนี้ ดำเนินการต่อ?')){event.target.value='';return;}
       products=data.products||[]; sales=data.sales||[]; purchases=data.purchases||[];
       debts=data.debts||[]; expenses=data.expenses||[]; settings=data.settings||settings;
       holdBills=data.holdBills||[]; billCounter=data.billCounter||1; categoryMapping=data.categoryMapping||categoryMapping;
       save();
       renderProducts(); renderPosProducts(); updateCatChips(); updateCategorySelects();
       renderMapping(); loadSettings();
-      toast('กู้คืนข้อมูลแล้ว ✓');
+      toast('กู้คืนข้อมูลแล้ว');
     }catch(err){
       toast('ไฟล์ไม่ถูกต้อง: '+err.message,'error');
     }
@@ -1813,7 +1818,7 @@ let _scan = null; // { stream, track, raf, onCode }
 
 async function openLiveScanner(onCode) {
   if (!('BarcodeDetector' in window)) {
-    toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'warning');
+    toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่มถ่าย/เลือกรูปแทน', 'warning');
     return;
   }
   stopScanner();
@@ -1864,7 +1869,7 @@ async function openLiveScanner(onCode) {
     _scan.raf = requestAnimationFrame(loop);
   } catch (err) {
     stopScanner();
-    toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'error');
+    toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่มถ่าย/เลือกรูปแทน', 'error');
     console.error(err);
   }
 }
@@ -2054,7 +2059,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const alerts=products.filter(p=>p.stock<=settings.lowStock||(p.expiry&&new Date(p.expiry)<=expWarn));
   const nb=document.getElementById('nav-alert-badge');
   if(nb){ nb.textContent=alerts.length; nb.style.display=alerts.length?'flex':'none'; }
-  if(alerts.length) setTimeout(()=>toast(`⚠️ ${alerts.length} รายการต้องตรวจสอบ`,'warning'),800);
+  if(alerts.length) setTimeout(()=>toast(`${alerts.length} รายการต้องตรวจสอบ`,'warning'),800);
 });
 
 function toggleMappingCard(){
