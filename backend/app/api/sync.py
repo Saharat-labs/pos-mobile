@@ -57,7 +57,7 @@ async def restore_backup(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/health")
+@router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "database": "connected", "timestamp": datetime.utcnow().isoformat()}

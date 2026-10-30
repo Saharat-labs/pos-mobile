@@ -19,6 +19,12 @@ from app.models import Base
 # access to the values within the .ini file in use.
 config = context.config
 
+# DATABASE_URL (environment) overrides sqlalchemy.url from alembic.ini.
+# Read from os.environ directly — do not import app.config here.
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url:
+    config.set_main_option("sqlalchemy.url", _database_url.replace("%", "%%"))
+
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
