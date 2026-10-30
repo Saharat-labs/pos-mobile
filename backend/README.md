@@ -78,6 +78,26 @@ cd backend
 python -m pytest tests/ -v
 ```
 
+### 🔥 Smoke test (ทดสอบกับเซิร์ฟเวอร์ที่รันอยู่จริง)
+
+`scripts/smoke_test.py` ยิง HTTP จริงไปที่ backend ที่รันอยู่ ตรวจทีละข้อแล้วพิมพ์ `PASS` / `FAIL` / `WARN`
+(docs/openapi, health `GET`/`HEAD`, auth, สินค้า, ขาย→ตัดสต๊อก/ยอดรวม/ขายเกินสต๊อก/เลขบิลไม่ซ้ำ,
+ใบสั่งซื้อ→รับของเพิ่มสต๊อก, sync, backup→restore) — มีข้อ `FAIL` จะ exit ไม่เป็น 0
+
+```bash
+cd backend
+python3 scripts/smoke_test.py --base-url http://localhost:8000
+# ถ้าเปิด AUTH_ENABLED=true และมีผู้ใช้แล้ว: เพิ่ม --username <user> --password <pass>
+# --strict = นับ WARN (ช่องว่าง frontend ↔ backend sync ที่รู้อยู่แล้ว) เป็น FAIL ด้วย
+```
+
+> ⚠️ ข้อ restore จะ **แทนที่ข้อมูลร้านปัจจุบัน** ด้วย backup ที่เพิ่งดาวน์โหลด — รันกับฐานข้อมูลทดลองเท่านั้น เช่น
+> `DATABASE_URL=sqlite+aiosqlite:////tmp/smoke.db PORT=8802 DEBUG=false python3 run.py`
+> แล้วใช้ `--base-url http://localhost:8802`
+>
+> 💡 ข้อ `sync: frontend export shape` ได้ `WARN` เสมอ เพราะ JSON จาก `exportBackupJSON()` ใน `script-pos.js`
+> ยังไม่ตรงกับ schema ของ `POST /api/v1/sync` (ต้องแปลงฟิลด์ก่อน)
+
 ### 📱 Termux (Android)
 
 `bash start_termux.sh` — สร้าง venv, ติดตั้ง dependencies, สร้าง `.env` จาก `.env.example`, เรียก `init_db()` แล้วรัน `run.py`

@@ -59,11 +59,15 @@ class SaleService:
             total = taxable + vat
         return subtotal, vat, total
 
-    async def create(self, data: SaleCreate, store_id: int, deduct_stock: bool = True) -> Sale:
+    async def create(
+        self, data: SaleCreate, store_id: int, deduct_stock: bool = True,
+        bill_no: Optional[str] = None,
+    ) -> Sale:
         """Create new sale with items.
 
         deduct_stock=False ใช้ตอน sync/restore เท่านั้น: stock ใน payload
         เป็นค่าปัจจุบันอยู่แล้ว ห้ามตัดซ้ำ (ยอดขายประวัติ = บันทึกอย่างเดียว)
+        bill_no ใช้ตอน sync/restore เพื่อคงเลขบิลเดิม (ผู้เรียกต้องตรวจว่าไม่ซ้ำ)
         """
         # Validate stock availability before creating the sale
         if deduct_stock:
@@ -85,7 +89,7 @@ class SaleService:
         # Create sale
         sale = Sale(
             store_id=store_id,
-            bill_no=self._generate_bill_no(),
+            bill_no=bill_no or self._generate_bill_no(),
             customer_name=data.customer_name,
             customer_phone=data.customer_phone,
             subtotal=subtotal,
