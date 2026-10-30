@@ -25,7 +25,7 @@
 ├── 📱 manifest.json, sw.js, icons/ → PWA (manifest, service worker, ไอคอน)
 ├── 🖥️ backend/            → FastAPI + SQLAlchemy + Alembic (ดู backend/README.md)
 ├── 🐳 docker-compose.yml  → รัน backend + frontend (nginx) พร้อมกัน
-├── 🐳 Dockerfile          → image ของ backend (build จาก root, copy backend/)
+├── 🐳 Dockerfile          → ไฟล์แยกจาก `backend/Dockerfile` (ใช้ python:3.11-slim, build จาก root, copy backend/) — `docker-compose.yml` ไม่ได้ใช้ไฟล์นี้
 ├── 🐳 nginx.Dockerfile    → image ของ frontend (nginx:alpine)
 ├── 🔧 nginx.conf          → config nginx: static, /api/ → backend, /health
 ├── 📘 PROJECT.md, USER_GUIDE.md, TASKS.md → เอกสารโปรเจกต์
@@ -80,7 +80,6 @@
 
 - **ออนไลน์:** เปิด https://saharatyokthuan.github.io/pos-mobile/
 - **ในเครื่อง:** เปิดไฟล์ `index.html` ในเบราว์เซอร์ได้ทันที — ไม่ต้อง build ไม่ต้อง install
-
 - **รัน backend (ไม่บังคับ):** ดู [backend/README.md](backend/README.md) หรือหัวข้อ docker compose ด้านล่าง
 
 > ฟีเจอร์สแกนบาร์โค้ดด้วยกล้องต้องเปิดผ่าน `https://` หรือ `localhost` เท่านั้น (ข้อกำหนดด้านความปลอดภัยของเบราว์เซอร์)
@@ -91,7 +90,7 @@
 
 | Service | Image / build | Port | หน้าที่ |
 |:---|:---|:---|:---|
-| `backend` | build จาก `./backend` (`backend/Dockerfile`) | `8000:8000` | FastAPI API, เก็บ SQLite ที่ volume `backend-data` (`/data/pos_mobile.db`), healthcheck `/api/v1/sync/health` |
+| `backend` | build จาก `./backend` (`backend/Dockerfile`) | `8000:8000` | FastAPI API, เก็บ SQLite ที่ volume `backend-data` (`/data/pos_mobile.db`), healthcheck `/api/v1/sync/health`; ตอนเริ่ม container จะรัน `alembic upgrade head` (สร้างตาราง + ร้านเริ่มต้น) แล้วจึงรัน `python run.py` |
 | `frontend` | `nginx:alpine` | `8080:80` | เสิร์ฟไฟล์ static จาก root ของ repo (mount ที่ `/usr/share/nginx/html`) ใช้ `nginx.conf`, ส่ง `/api/` ต่อไปที่ `backend:8000`, มี `/health` |
 | `backup` | build จาก `./backend` | - | ทำ backup ตาราง SQLite เป็น JSON ไปที่ `./backup` — เปิดเฉพาะเมื่อใช้ profile `backup` |
 
@@ -106,7 +105,7 @@ docker compose down                    # หยุด (ข้อมูลอย�
 
 หมายเหตุที่ตรวจจากไฟล์ตั้งค่า:
 - `nginx.conf` proxy เฉพาะ `/api/` — path WebSocket (`/ws`) ไม่ได้ถูก proxy ต้องต่อที่พอร์ต 8000 ตรง ๆ
-- `docker-compose.yml` mount `./backend/pos_mobile.db` เข้า `/app/pos_mobile.db` แบบ read-only (ถ้าไฟล์นี้ไม่มีบน host Docker จะสร้างเป็นโฟลเดอร์) ขณะที่ backend ใช้ DB จริงที่ `/data/pos_mobile.db`
+- ฐานข้อมูลของ backend อยู่ที่ `/data/pos_mobile.db` ใน volume `backend-data` เท่านั้น (ไม่มีการ mount ไฟล์ DB จาก host)
 - `nginx.Dockerfile` (image แบบ copy ไฟล์ static เข้า nginx) ไม่ได้ถูกอ้างถึงใน `docker-compose.yml`
 
 ## 📦 Dependencies (โหลดผ่าน CDN + ตรวจสอบ SRI)

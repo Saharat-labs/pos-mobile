@@ -59,17 +59,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env     # แล้วแก้ค่าตามต้องการ (ดูหัวข้อ Environment variables)
-alembic upgrade head     # สร้างตาราง + ร้านเริ่มต้น (แนะนำให้ทำก่อนรันครั้งแรก)
+alembic upgrade head     # สร้างตาราง + ร้านเริ่มต้น (ต้องทำก่อนรันครั้งแรก)
 python run.py            # เริ่มที่ http://0.0.0.0:8000
 ```
 
 - 📖 Swagger UI: http://localhost:8000/docs  ·  ReDoc: `/redoc`  ·  OpenAPI: `/openapi.json`
-- ❤️ Health: `GET /health` และ `GET /api/v1/sync/health`
+- ❤️ Health: `GET /health` และ `GET`/`HEAD /api/v1/sync/health` (frontend เรียกแบบ `HEAD`)
 - ถ้า `DEBUG=true` (ค่า default) `run.py` จะรัน uvicorn แบบ `reload`
 
-> ⚠️ `DATA_DIR` มีค่า default เป็น path ของ Termux (`/data/data/com.termux/files/home/pos-mobile-data`) และ backend จะพยายามสร้างโฟลเดอร์นี้ตอน import `app.config` — บนเครื่องทั่วไปให้ตั้ง `DATA_DIR` เป็นโฟลเดอร์ที่เขียนได้ใน `.env`
+> 💡 `DATA_DIR` มีค่า default เป็น `~/pos-mobile-data` (บน Termux คือ `/data/data/com.termux/files/home/pos-mobile-data`) — `run.py` จะสร้างโฟลเดอร์นี้ให้ตอนเริ่ม ตั้งค่าอื่นได้ผ่าน `DATA_DIR` ใน `.env`
 >
-> ⚠️ `requirements.txt` ไม่ได้ระบุ `greenlet` — ตอนทดสอบด้วย Python 3.13 แล้ว pip ไม่ติดตั้งให้เอง และ backend start ไม่ขึ้น (`the greenlet library is required`) ถ้าเจอให้รัน `pip install greenlet`
+> 💡 ควรรัน `alembic upgrade head` ก่อนเริ่มครั้งแรกเสมอ เพราะตอน start `init_db()` สร้างเฉพาะตาราง ไม่สร้างร้านเริ่มต้น
 
 ### 🧪 รันเทสต์
 
@@ -94,8 +94,8 @@ alembic revision -m "..."   # สร้าง revision ใหม่ (ตั้�
 ```
 
 หมายเหตุที่ตรวจจากโค้ด:
-- `alembic/env.py` อ่าน URL จาก `sqlalchemy.url` ใน `alembic.ini` (`sqlite+aiosqlite:///./pos_mobile.db`) **ไม่ได้อ่าน `DATABASE_URL`** — ถ้าใช้ฐานข้อมูลอื่นต้องแก้ `alembic.ini`
-- `revision 003` สร้างร้านเริ่มต้น (`STORE001`) ให้ ส่วน `init_db()` ตอน start จะ `create_all` ตารางเท่านั้น ไม่สร้างร้าน — ถ้าเริ่มจาก DB เปล่าโดยไม่รัน `alembic upgrade head` การเรียก endpoint ที่ผูกกับร้านจะได้ `404 Store not found for current user` (ทดสอบแล้ว)
+- `alembic/env.py` ใช้ `sqlalchemy.url` จาก `alembic.ini` (`sqlite+aiosqlite:///./pos_mobile.db`) เป็นค่าตั้งต้น แต่ถ้าตั้งตัวแปรสภาพแวดล้อม `DATABASE_URL` จะใช้ค่านั้นแทน (ทั้ง offline/online) เช่น `DATABASE_URL=sqlite+aiosqlite:////data/pos_mobile.db alembic upgrade head` — อ่านจาก environment จริงเท่านั้น (ไม่อ่านไฟล์ `.env`)
+- `revision 003` สร้างร้านเริ่มต้น (`STORE001`) ให้ ส่วน `init_db()` ตอน start จะ `create_all` ตารางเท่านั้น ไม่สร้างร้าน — ถ้าเริ่มจาก DB เปล่าโดยไม่รัน `alembic upgrade head` การเรียก endpoint ที่ผูกกับร้านจะได้ `404 Store not found for current user` (ทดสอบแล้ว) `backend/Dockerfile` จึงรัน `alembic upgrade head` ก่อน `python run.py` ให้อัตโนมัติ
 
 ## 🔌 Endpoints
 
@@ -133,12 +133,12 @@ alembic revision -m "..."   # สร้าง revision ใหม่ (ตั้�
 | ตัวแปร | Default | ความหมาย |
 |:---|:---|:---|
 | `APP_NAME` / `APP_VERSION` | `POS-MOBILE API` / `1.0.0` | ชื่อและเวอร์ชันที่แสดงใน API |
-| `DEBUG` | `True` | `True` = uvicorn reload (Dockerfile ตั้งเป็น `false`) |
+| `DEBUG` | `True` | `True` = uvicorn reload (`docker-compose.yml` และ `Dockerfile` ที่ root ตั้งเป็น `false`; `backend/Dockerfile` ไม่ได้ตั้ง) |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./pos_mobile.db` | SQLAlchemy async URL |
 | `DATABASE_ECHO` | `False` | แสดง SQL log |
 | `CORS_ORIGINS` | `["http://localhost:8000","http://127.0.0.1:8000","file://","null"]` | JSON list ของ origin ที่อนุญาต |
 | `HOST` / `PORT` | `0.0.0.0` / `8000` | ที่อยู่/พอร์ตของเซิร์ฟเวอร์ |
-| `DATA_DIR` | `/data/data/com.termux/files/home/pos-mobile-data` | โฟลเดอร์ข้อมูล (ถูกสร้างอัตโนมัติ) |
+| `DATA_DIR` | `~/pos-mobile-data` (`Path.home()`) | โฟลเดอร์ข้อมูล (`run.py` สร้างให้ตอนเริ่ม) |
 | `AUTH_ENABLED` | `False` | `False` = ข้ามการยืนยันตัวตน (ใช้/สร้าง user `dev@local` อัตโนมัติ); `True` = ต้องใช้ JWT Bearer หรือ `X-API-Key` |
 | `JWT_SECRET` | (ว่าง) | จำเป็นเมื่อ `AUTH_ENABLED=true` (ไม่ตั้งจะ raise `ValueError`); ถ้าปิด auth จะใช้ค่า dev ภายใน — อ่านจาก environment ใน `app/auth.py` |
 | `JWT_ALGORITHM` | `HS256` | อัลกอริทึม JWT |
