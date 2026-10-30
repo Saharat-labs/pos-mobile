@@ -331,6 +331,16 @@ tr:active td { background: var(--surface2); }
 .toast-warning { background: var(--amber); color: #0F1623; }
 @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+/* ── STORE SWITCHER ──────────────────────── */
+.header-subtitle { cursor: pointer; }
+.store-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.store-row.active { border-color: var(--teal); background: var(--teal-dim); }
+.store-row-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── OFFLINE INDICATOR ───────────────────── */
 .offline-indicator {
   position: fixed;

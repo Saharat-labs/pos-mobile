@@ -2,10 +2,19 @@
 // DATA STORE
 // ══════════════
 let _storageWarned = false;
+// แต่ละร้านมี namespace ของตัวเองใน localStorage — ร้าน 1 ใช้ prefix เดิม 'qpos_'
+// เพื่อให้ข้อมูลที่มีอยู่ก่อนเป็นของร้าน 1 โดยไม่ต้อง migrate
+const storePrefix = id => id === 1 ? 'qpos_' : `qpos_s${id}_`;
+const getGlobal = (k, d) => { try { return JSON.parse(localStorage.getItem('qpos_'+k)) ?? d; } catch { return d; } };
+const setGlobal = (k, v) => { try { localStorage.setItem('qpos_'+k, JSON.stringify(v)); } catch {} };
+let stores = getGlobal('stores', [{ id: 1, name: 'ร้านหลัก' }]);
+let currentStoreId = getGlobal('currentStore', 1);
+if (!stores.some(s => s.id === currentStoreId)) currentStoreId = 1;
+const STORE_PREFIX = storePrefix(currentStoreId);
 const DB = {
-  get: (k, d=[]) => { try { return JSON.parse(localStorage.getItem('qpos_'+k)) ?? d; } catch { return d; } },
+  get: (k, d=[]) => { try { return JSON.parse(localStorage.getItem(STORE_PREFIX+k)) ?? d; } catch { return d; } },
   set: (k, v) => {
-    try { localStorage.setItem('qpos_'+k, JSON.stringify(v)); return true; }
+    try { localStorage.setItem(STORE_PREFIX+k, JSON.stringify(v)); return true; }
     catch (err) {
       if (!_storageWarned) {
         _storageWarned = true;
@@ -573,13 +582,71 @@ function updateHeaderSubtitle() {
   const el = document.getElementById('header-subtitle');
   if (!el) return;
   const parts = [settings.storeCode, settings.storeName].filter(Boolean);
-  el.textContent = parts.join(' · ');
+  if (stores.length > 1 && !parts.length) parts.push(currentStore().name);
+  el.textContent = (stores.length > 1 ? '🏪 ' : '') + parts.join(' · ') + (stores.length > 1 ? ' ▾' : '');
+}
+
+// ═══════════════════════════════════════════════
+// STORES (แยกข้อมูลแต่ละร้านในเครื่อง)
+// ═══════════════════════════════════════════════
+function currentStore() { return stores.find(s => s.id === currentStoreId) || stores[0]; }
+function openStoresModal() { closeMenu(); renderStores(); openModal('modal-stores'); }
+function renderStores() {
+  document.getElementById('store-list').innerHTML = stores.map(s => {
+    const active = s.id === currentStoreId;
+    return `<div class="store-row${active ? ' active' : ''}">
+      <div class="store-row-name">${active ? '✓ ' : ''}${esc(s.name)}</div>
+      ${active ? '<span class="badge badge-teal">ใช้งานอยู่</span>'
+               : `<button class="btn btn-primary btn-sm" onclick="switchStore(${s.id})">สลับ</button>`}
+      <button class="btn-icon" onclick="renameStore(${s.id})" title="เปลี่ยนชื่อ">✏️</button>
+      ${active || s.id === 1 ? '' : `<button class="btn-icon" onclick="deleteStore(${s.id})" title="ลบร้าน">🗑️</button>`}
+    </div>`;
+  }).join('');
+}
+function addStore() {
+  const name = (prompt('ชื่อร้านใหม่') || '').trim();
+  if (!name) return;
+  const id = Math.max(...stores.map(s => s.id)) + 1;
+  stores.push({ id, name });
+  setGlobal('stores', stores);
+  // ร้านใหม่เริ่มว่าง ไม่ต้องใส่ข้อมูลตัวอย่าง
+  try { localStorage.setItem(storePrefix(id) + 'seeded', 'true'); } catch {}
+  try { localStorage.setItem(storePrefix(id) + 'settings', JSON.stringify({ ...settings, storeCode: '', storeName: name, storeAddr: '', storePhone: '', taxId: '' })); } catch {}
+  renderStores();
+  if (confirm(`เพิ่มร้าน "${name}" แล้ว สลับไปใช้ร้านนี้เลยไหม?`)) switchStore(id);
+}
+function renameStore(id) {
+  const s = stores.find(x => x.id === id); if (!s) return;
+  const name = (prompt('ชื่อร้าน', s.name) || '').trim();
+  if (!name) return;
+  s.name = name;
+  setGlobal('stores', stores);
+  renderStores(); updateHeaderSubtitle();
+}
+function deleteStore(id) {
+  const s = stores.find(x => x.id === id);
+  if (!s || id === 1 || id === currentStoreId) return;
+  if (!confirm(`⚠️ ลบร้าน "${s.name}" และข้อมูลทั้งหมดของร้านนี้ในเครื่อง? (กู้คืนไม่ได้)`)) return;
+  const prefix = storePrefix(id);
+  Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
+  stores = stores.filter(x => x.id !== id);
+  setGlobal('stores', stores);
+  renderStores(); updateHeaderSubtitle();
+  toast('ลบร้านแล้ว', 'warning');
+}
+function switchStore(id) {
+  if (id === currentStoreId) return;
+  if (cart.length && !confirm('มีสินค้าในตะกร้า ตะกร้าจะถูกเก็บไว้กับร้านปัจจุบัน สลับร้านต่อ?')) return;
+  save();
+  setGlobal('stores', stores);
+  setGlobal('currentStore', id);
+  location.reload();
 }
 function openSetting() {
   navigateFromMenu('more');
 }
 function clearAllData() {
-  if (!confirm('⚠️ ล้างข้อมูลทั้งหมด?')) return;
+  if (!confirm(`⚠️ ล้างข้อมูลทั้งหมดของร้าน "${currentStore().name}"? (ร้านอื่นไม่ถูกลบ)`)) return;
   products=[];sales=[];purchases=[];debts=[];expenses=[];holdBills=[];billCounter=1;
   save(); toast('ล้างข้อมูลแล้ว','warning'); showPage('pos');
 }
@@ -1688,7 +1755,7 @@ function exportBackupJSON(){
   const backup={products,sales,purchases,debts,expenses,settings,holdBills,billCounter,categoryMapping,exportedAt:new Date().toISOString(),version:1};
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`qpos-backup-${today()}.json`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`qpos-backup-${currentStore().name.replace(/[\\/:*?"<>|\s]+/g,'_')}-${today()}.json`; a.click();
   URL.revokeObjectURL(url);
   toast('สำรองข้อมูลแล้ว ✓');
 }

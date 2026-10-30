@@ -24,7 +24,7 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="header-center" onclick="navigateFromMenu('pos')" role="button" aria-label="กลับหน้าแรก">
     <h1 class="header-title">POS-MOBILE</h1>
-    <p class="header-subtitle" id="header-subtitle"></p>
+    <p class="header-subtitle" id="header-subtitle" onclick="if(stores.length>1){event.stopPropagation();openStoresModal();}"></p>
   </div>
   <div class="header-right">
    <button class="header-btn" id="setting-btn" onclick="openSetting()" aria-label="เปิดการตั้งค่า"aria-expanded="false">
@@ -54,6 +54,7 @@ if ('serviceWorker' in navigator) {
     <button class="sidebar-link" onclick="closeMenu();showSubPage('stock-adjust')">⚖️ ปรับสต๊อก</button>
     <button class="sidebar-link" onclick="closeMenu();openHoldBillsPage()">🅿️ บิลพัก</button>
     <button class="sidebar-link" onclick="closeMenu();exportBackupJSON()">💾 สำรองข้อมูลทั้งหมด</button>
+    <button class="sidebar-link" onclick="openStoresModal()">🏪 สลับ / จัดการร้าน</button>
   </nav>
 </aside>
 
@@ -592,6 +593,19 @@ if ('serviceWorker' in navigator) {
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-expense')">ยกเลิก</button>
       <button class="btn btn-primary" onclick="saveExpense()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-stores" onclick="if(event.target===this)closeModal('modal-stores')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🏪 สลับ / จัดการร้าน</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">ข้อมูลสินค้า ยอดขาย ลูกหนี้ และการตั้งค่า แยกกันในแต่ละร้าน (เก็บในเครื่องนี้)</div>
+    <div id="store-list"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stores')">ปิด</button>
+      <button class="btn btn-primary" onclick="addStore()">➕ เพิ่มร้าน</button>
     </div>
   </div>
 </div>
