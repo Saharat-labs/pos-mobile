@@ -141,7 +141,7 @@ const save = ()=>{
 - `openModal(id)` / `closeModal(id)` แค่เพิ่ม/ลบ class `open` (`.modal-overlay.open { display:flex }`)
 - คลิกพื้นหลัง = ปิด (เช็ค `event.target===this`)
 - `Esc` เรียก `closeTopModal()` ซึ่งปิด modal `.open` ตัวล่าสุดใน DOM; `modal-scanner` ถูกจัดการพิเศษด้วย `stopScanner()` (ต้องปิดกล้อง)
-- ตะกร้า (`#cart-sheet`) ไม่ใช่ `.modal-overlay` — ใช้ `openCartSheet()`/`closeCartSheet()`
+- ตะกร้า (`#cart-sheet`) ใช้ `openCartSheet()`/`closeCartSheet()` — `openCartSheet()` เรียก `renderCart()` แล้ว `openModal('cart-sheet')` (และ `closeCartSheet()` เรียก `closeModal('cart-sheet')`) จึงเปิด/ปิดด้วย class `open` แบบเดียวกับ modal อื่น
 - แพทเทิร์นเปิด modal: ฟังก์ชัน `openXxx()` reset ค่าในฟอร์มก่อนแล้วค่อย `openModal` (ดู `openExpense()`)
 
 ### 2.5 ไอคอน: SVG sprite + `icon(name)`
@@ -218,12 +218,14 @@ toast('กรอกรายการและจำนวนเงิน','erro
 
 ### 2.10 Service worker (`sw.js`)
 
-- `CACHE_NAME = 'pos-mobile-v2'` (ค่าปัจจุบัน), precache `ASSETS` = `./`, `index.html`, `script-pos.js`, `style-pos.css`, `manifest.json`
+- `CACHE_NAME = 'pos-mobile-v3'` (ค่าปัจจุบัน), precache `ASSETS` = `./`, `index.html`, `script-pos.js`, `style-pos.css`, `manifest.json`
+- `install` precache ด้วย `cache.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))` — `cache: 'reload'` ข้าม HTTP cache ของเบราว์เซอร์ จึงได้ไฟล์ล่าสุดจากเซิร์ฟเวอร์ทุกตัว (ไม่มี `index.html` ใหม่คู่กับ `script-pos.js` เก่า) แล้ว `skipWaiting()`
+- ฝั่งเซิร์ฟเวอร์ `nginx.conf` ส่ง `location = /sw.js` แบบ `no-cache, no-store, must-revalidate` และ `.js`/`.css` แบบ `Cache-Control: no-cache` (revalidate ทุกครั้ง) — รูป/ฟอนต์ยัง cache 1 ปี (ดู [DEPLOYMENT.md §8](DEPLOYMENT.md#8-ออกเวอร์ชันใหม่ของ-frontend-service-worker))
 - `activate` ลบ cache ทุกตัวที่ชื่อไม่ตรง `CACHE_NAME`
 - `fetch`: path ขึ้นต้น `/api/` → ไม่แตะ (ไป network); อย่างอื่น **cache-first** และ cache GET ที่ ok เพิ่ม (รวมไฟล์ CDN); navigation ที่ล้มจะ fallback เป็น `index.html`
 - ลงทะเบียนใน `<head>` ของ `index.html` (`navigator.serviceWorker.register('./sw.js')`)
 
-> ✅ **กฎ:** แก้ `index.html` / `script-pos.js` / `style-pos.css` / `manifest.json` เมื่อไหร่ ให้ bump `CACHE_NAME` (เช่น `v2` → `v3`) ใน commit เดียวกัน ไม่งั้นผู้ใช้ที่เคยเปิดแอปจะได้ไฟล์เก่าจาก cache (ดู commit `de10195` เป็นตัวอย่าง)
+> ✅ **กฎ:** แก้ `index.html` / `script-pos.js` / `style-pos.css` / `manifest.json` เมื่อไหร่ ให้ bump `CACHE_NAME` (เช่น `v3` → `v4`) ใน commit เดียวกัน — `cache: 'reload'` และ header ของ nginx แค่รับประกันว่า cache ชุดใหม่ได้ไฟล์ล่าสุด แต่ `fetch` ยังเป็น cache-first ถ้าไม่ bump ผู้ใช้ที่เคยเปิดแอปจะได้ไฟล์เก่าจาก cache ตลอดไป (ดู commit `de10195` เป็นตัวอย่าง)
 > ไฟล์ใหม่ที่ต้องใช้ offline ตั้งแต่ครั้งแรก ให้เพิ่มใน `ASSETS` ด้วย
 
 ### 2.11 CDN libraries
@@ -290,7 +292,7 @@ backend/
 
 - `engine = create_async_engine(settings.DATABASE_URL, ...)` (+ `check_same_thread=False` สำหรับ SQLite)
 - `get_db()` — dependency ที่ yield `AsyncSession` (tests override ตัวนี้)
-- `init_db()` — ถูกเรียกใน `lifespan` ของ `main.py` ทุกครั้งที่ start: `Base.metadata.create_all` และ (ใน working tree ปัจจุบัน) สร้างร้านเริ่มต้น `id=1` / `STORE001` เมื่อตาราง `stores` ยังว่าง — เพราะ user ทุกคน (รวม dev user) ผูกกับ `store_id=1`
+- `init_db()` — ถูกเรียกใน `lifespan` ของ `main.py` ทุกครั้งที่ start: `Base.metadata.create_all` และสร้างร้านเริ่มต้น `id=1` / `STORE001` (`ร้านค้าเริ่มต้น`) เมื่อตาราง `stores` ยังว่าง (ตั้งแต่ commit `7ab1281`) — แต่ **ไม่** บันทึก `alembic_version` ถ้า DB ถูกสร้างด้วย `init_db()` ต้อง `alembic stamp head` ก่อนรัน migration ถัดไป — เพราะ user ทุกคน (รวม dev user) ผูกกับ `store_id=1`
 
 ### 3.4 `app/schemas.py`
 
@@ -653,7 +655,7 @@ api_router.include_router(suppliers.router)
 
 ### ขั้นที่ 7 — Tests (`backend/tests/test_api_suppliers.py`)
 
-Fixture `client` ใน `tests/conftest.py`: SQLite in-memory ใหม่ทุก test, สร้าง `Store(id=1)` ให้, override `get_db`, ใช้ `httpx.AsyncClient` + `ASGITransport` (AUTH_ENABLED=False จึงได้ dev user อัตโนมัติ)
+Fixture `client` ใน `tests/conftest.py`: SQLite in-memory ใหม่ทุก test (`test_engine`), ขึ้นกับ fixture `test_session` ซึ่งเป็นตัวสร้าง `Store(id=1)` ให้, override `get_db`, ใช้ `httpx.AsyncClient` + `ASGITransport` (AUTH_ENABLED=False จึงได้ dev user อัตโนมัติ)
 
 ```python
 """Tests for Suppliers API."""
@@ -866,7 +868,24 @@ python3 -m http.server 8080          # http://localhost:8080
 
 ### 6.4 Browser E2E
 
-ชุดทดสอบ E2E บนเบราว์เซอร์อาจอยู่ที่ `tests/e2e/` (กำลังเพิ่มแยกต่างหาก) — ดูวิธีรันจากไฟล์ในโฟลเดอร์นั้น
+ชุดทดสอบ E2E อยู่ที่ `tests/e2e/frontend.spec.js` — เปิดแอปใน Chromium จริงผ่าน Playwright แล้วกดใช้งานแบบผู้ใช้ (ทุกหน้า, modal, การขาย/ขายเชื่อ/รับชำระหนี้, พักบิล, สั่งซื้อ, Excel, สำรอง/กู้คืน JSON, หลายร้าน, ปุ่มลัด, สแกนบาร์โค้ดด้วยกล้องจำลอง, แบนเนอร์ออฟไลน์, `file://`) รายละเอียดอยู่ใน [tests/e2e/README.md](../tests/e2e/README.md)
+
+```bash
+tests/e2e/run.sh        # ต้องมี node + playwright (Chromium), npm, python3 — ไม่ต้อง npm install ในโปรเจกต์
+```
+
+`run.sh` เปิด `python3 -m http.server` ที่ root ของ repo (ปิดด้วย PID ตอนจบ) แล้วรัน `node tests/e2e/frontend.spec.js` — exit code 0 เมื่อผ่านทั้งหมด
+
+| ตัวแปร | ความหมาย | ค่าเริ่มต้น |
+|---|---|---|
+| `E2E_PORT` | พอร์ต static server (ถ้าถูกใช้อยู่ สคริปต์ exit 2) | `8801` |
+| `E2E_CACHE_DIR` | แคช SheetJS/Chart.js ที่ดึงด้วย `npm pack` + ไฟล์ชั่วคราว | `$TMPDIR/pos-e2e-cache` |
+| `E2E_ONLY` | รันเฉพาะเทสต์ที่ชื่อมีข้อความนี้ | ทั้งหมด |
+| `E2E_HEADED=1` / `E2E_DEBUG=1` | เปิดหน้าต่างเบราว์เซอร์ / พิมพ์ console ของหน้า | ปิด |
+| `E2E_APP_SCRIPT` | ใช้ `script-pos.js` ไฟล์อื่น (เช่นเวอร์ชันเก่า) เพื่อตรวจว่าเทสต์จับบั๊กได้ | ไฟล์ในโปรเจกต์ |
+| `E2E_BASE_URL` | รัน `node tests/e2e/frontend.spec.js` ตรง ๆ กับเซิร์ฟเวอร์ที่เปิดอยู่แล้ว | ตั้งโดย `run.sh` |
+
+ชุดทดสอบดัก `https://cdnjs.cloudflare.com/**` แล้วตอบด้วยไฟล์จาก npm (`xlsx@0.18.5`, `chart.js@4.4.0`) และปิด Service Worker ในแต่ละ context
 
 ---
 
@@ -911,7 +930,7 @@ ci: run full test suite (167 tests) + update TASKS.md
 
 | เรื่อง | รายละเอียด | ที่มา |
 |--------|-----------|-------|
-| ไม่มีร้าน `id=1` | ถ้าตาราง `stores` ว่าง ทุก endpoint ที่ใช้ `get_current_store` ตอบ `404 Store not found for current user` — ร้านเริ่มต้นมาจาก migration 003 หรือจาก `init_db()` (เวอร์ชันที่ seed ร้านให้) ถ้าเจอ 404 นี้ให้ตรวจตาราง `stores` ก่อน | `app/auth.py` `get_current_store`, `app/database.py`, `alembic/versions/003_add_multi_store.py` |
+| ไม่มีร้าน `id=1` | ถ้าตาราง `stores` ว่าง ทุก endpoint ที่ใช้ `get_current_store` ตอบ `404 Store not found for current user` — ร้านเริ่มต้นมาจาก migration 003 หรือจาก `init_db()` (seed ร้าน id=1 เมื่อตาราง `stores` ว่าง) ถ้าเจอ 404 นี้ให้ตรวจตาราง `stores` ก่อน | `app/auth.py` `get_current_store`, `app/database.py`, `alembic/versions/003_add_multi_store.py` |
 | ลำดับ Alembic vs create_all | ถ้า start แอปก่อน (create_all สร้างตารางแล้ว) แล้วค่อย `alembic upgrade head` อาจชนว่าตารางมีอยู่แล้ว — รัน migration ก่อนเสมอ | `app/main.py` lifespan |
 | JWT config | `auth.py` อ่าน `JWT_*` จาก `os.environ` — `run.py` โหลด `.env` เข้า environ ให้ แต่ถ้ารัน `uvicorn app.main:app` ตรง ๆ ค่าใน `.env` จะไม่ถูกใช้ | `app/auth.py`, `run.py` |
 | WebSocket 2 ชุด | event จาก service ไปที่ `/ws` เท่านั้น ไม่ไป `/api/v1/ws` | 3.7 |

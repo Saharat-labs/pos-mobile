@@ -69,7 +69,7 @@ python run.py            # เริ่มที่ http://0.0.0.0:8000
 
 > 💡 `DATA_DIR` มีค่า default เป็น `~/pos-mobile-data` (บน Termux คือ `/data/data/com.termux/files/home/pos-mobile-data`) — `run.py` จะสร้างโฟลเดอร์นี้ให้ตอนเริ่ม ตั้งค่าอื่นได้ผ่าน `DATA_DIR` ใน `.env`
 >
-> 💡 ควรรัน `alembic upgrade head` ก่อนเริ่มครั้งแรกเสมอ เพราะตอน start `init_db()` สร้างเฉพาะตาราง ไม่สร้างร้านเริ่มต้น
+> 💡 ควรรัน `alembic upgrade head` ก่อนเริ่มครั้งแรกเสมอ — ตอน start `init_db()` จะ `create_all` ตารางและสร้างร้านเริ่มต้น id=1 (`STORE001`) ถ้ายังไม่มีร้าน แอปจึงใช้งานได้ แต่ `init_db()` **ไม่บันทึก `alembic_version`** ถ้า DB ถูกสร้างแบบนี้ต้อง `alembic stamp head` ก่อนรัน migration ถัดไป ไม่เช่นนั้น `alembic upgrade head` จะล้มด้วย `table ... already exists`
 
 ### 🧪 รันเทสต์
 
@@ -115,7 +115,7 @@ alembic revision -m "..."   # สร้าง revision ใหม่ (ตั้�
 
 หมายเหตุที่ตรวจจากโค้ด:
 - `alembic/env.py` ใช้ `sqlalchemy.url` จาก `alembic.ini` (`sqlite+aiosqlite:///./pos_mobile.db`) เป็นค่าตั้งต้น แต่ถ้าตั้งตัวแปรสภาพแวดล้อม `DATABASE_URL` จะใช้ค่านั้นแทน (ทั้ง offline/online) เช่น `DATABASE_URL=sqlite+aiosqlite:////data/pos_mobile.db alembic upgrade head` — อ่านจาก environment จริงเท่านั้น (ไม่อ่านไฟล์ `.env`)
-- `revision 003` สร้างร้านเริ่มต้น (`STORE001`) ให้ ส่วน `init_db()` ตอน start จะ `create_all` ตารางเท่านั้น ไม่สร้างร้าน — ถ้าเริ่มจาก DB เปล่าโดยไม่รัน `alembic upgrade head` การเรียก endpoint ที่ผูกกับร้านจะได้ `404 Store not found for current user` (ทดสอบแล้ว) `backend/Dockerfile` จึงรัน `alembic upgrade head` ก่อน `python run.py` ให้อัตโนมัติ
+- `revision 003` สร้างร้านเริ่มต้น (`STORE001`) ให้ และ `init_db()` (`app/database.py`) ตอน start ก็ `create_all` ตารางแล้วสร้างร้าน id=1 (`STORE001`) เมื่อตาราง `stores` ว่าง — จึงไม่ได้ `404 Store not found for current user` แม้เริ่มจาก DB เปล่าโดยไม่รัน alembic แต่ `init_db()` ไม่บันทึก `alembic_version` DB แบบนั้นต้อง `alembic stamp head` (สำรองก่อน) ก่อน migration ถัดไป `backend/Dockerfile` จึงรัน `alembic upgrade head` ก่อน `python run.py` ให้อัตโนมัติ
 
 ## 🔌 Endpoints
 

@@ -273,8 +273,9 @@ secure context = `https://` หรือ `http://localhost` / `127.0.0.1` เท
 | `listen 80` | HTTP อย่างเดียว ไม่มี TLS |
 | `~ /\.` (บรรทัด 16) | `deny all` + 404 ให้ทุก path ที่มีส่วนขึ้นต้นด้วยจุด (`.git`, `.env`, `.well-known` ฯลฯ) |
 | `~ ^/(backend\|backup\|tests\|docs\|\.github)(/\|$)` (บรรทัด 20) | 404 — ชั้นป้องกันซ้อน เผื่อไฟล์เหล่านี้หลุดเข้า web root |
-| `~* \.(js\|css\|png\|...)$` (บรรทัด 31) | `expires 1y` + `Cache-Control: public, immutable` |
-| `/sw.js` | ตั้งใจให้ `no-cache` — **แต่ไม่มีผลจริง** เพราะ regex location ด้านบนชนะ prefix location (ดู [10.2](#102-การแก้ไขปัญหา)) |
+| `= /sw.js` | exact match (ชนะ regex location ทุกตัว) → `Cache-Control: no-cache, no-store, must-revalidate` + `Pragma: no-cache` + `Expires: 0` — เบราว์เซอร์ตรวจ `sw.js` ใหม่ทุกครั้ง |
+| `~* \.(js\|css)$` | `Cache-Control: no-cache` — เก็บ cache ได้แต่ต้อง revalidate ทุกครั้ง (ได้ `304` ถ้าไฟล์ไม่เปลี่ยน ผ่าน `ETag`/`Last-Modified`) จึงไม่มี `script-pos.js`/`style-pos.css` อายุ 1 ปีค้างใน HTTP cache |
+| `~* \.(png\|jpg\|...\|woff2)$` | รูป/ฟอนต์: `expires 1y` + `Cache-Control: public, immutable` |
 | `/manifest.json` | cache 1 วัน |
 | `/api/` | `proxy_pass http://backend:8000` + `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, timeout 60s — **ไม่มี header `Upgrade`/`Connection`** จึงใช้ WebSocket `/api/v1/ws` ผ่าน nginx ไม่ได้ |
 | `/ws` | **ไม่ได้ proxy** — ตกไปที่ SPA fallback (`index.html`) |
@@ -546,7 +547,7 @@ jq '.data' store_backup_20261030.json | \
 
 ## 8. ออกเวอร์ชันใหม่ของ Frontend (Service Worker)
 
-`sw.js` ใช้กลยุทธ์ **cache-first** สำหรับไฟล์ static ทุกตัว (ยกเว้น `/api/`) และ precache `./`, `index.html`, `script-pos.js`, `style-pos.css`, `manifest.json` ภายใต้ชื่อ `CACHE_NAME` (ปัจจุบัน `pos-mobile-v2`)
+`sw.js` ใช้กลยุทธ์ **cache-first** สำหรับไฟล์ static ทุกตัว (ยกเว้น `/api/`) และ precache `./`, `index.html`, `script-pos.js`, `style-pos.css`, `manifest.json` ภายใต้ชื่อ `CACHE_NAME` (ปัจจุบัน `pos-mobile-v3`)
 
 ผลคือ: **ถ้าไม่เปลี่ยน `CACHE_NAME` เครื่องที่ติดตั้งแล้วจะใช้ไฟล์เก่าตลอดไป** แม้เซิร์ฟเวอร์มีไฟล์ใหม่
 
@@ -554,7 +555,7 @@ jq '.data' store_backup_20261030.json | \
 
 ```js
 // sw.js
-const CACHE_NAME = 'pos-mobile-v3';   // ← เพิ่มเลขทุก release ที่มีไฟล์ frontend เปลี่ยน
+const CACHE_NAME = 'pos-mobile-v4';   // ← เพิ่มเลขทุก release ที่มีไฟล์ frontend เปลี่ยน
 ```
 
 แล้ว build image frontend ใหม่บนเซิร์ฟเวอร์ (ไฟล์ถูก copy เข้า image ตอน build ไม่ได้ mount จาก repo):
@@ -568,7 +569,15 @@ docker compose build frontend && docker compose up -d frontend
 
 เมื่อผู้ใช้เปิดแอปครั้งถัดไป เบราว์เซอร์จะเห็น `sw.js` เปลี่ยน → `install` cache ใหม่ (`skipWaiting`) → `activate` ลบ cache เก่าและ `clients.claim()` → **โหลดหน้าใหม่อีกครั้ง** ถึงจะเห็นเวอร์ชันใหม่
 
-> ⚠️ ข้อจำกัดของ `nginx.conf` ปัจจุบัน: `.js`/`.css` ได้ header `Cache-Control: public, immutable` + `expires 1y` และชื่อไฟล์ไม่มี version ทำให้ทั้งเบราว์เซอร์และขั้นตอน `cache.addAll()` ของ service worker อาจได้ `script-pos.js` ตัวเก่าจาก HTTP cache แม้จะ bump `CACHE_NAME` แล้ว — ถ้าผู้ใช้ยังเห็นเวอร์ชันเก่า ให้ล้างข้อมูลเว็บไซต์ (สำรอง JSON ก่อน!) และดูข้อเสนอแก้ใน [10.2](#102-การแก้ไขปัญหา)
+ทำไมไฟล์ที่ได้จึงเป็นชุดเดียวกันเสมอ (ไม่มี `index.html` ใหม่คู่กับ `script-pos.js` เก่า):
+
+- `nginx.conf` ส่ง `sw.js` ด้วย `location = /sw.js` (exact match) แบบ `no-cache, no-store` → เบราว์เซอร์เห็น `CACHE_NAME` ใหม่ทันที
+- `.js`/`.css` ได้ `Cache-Control: no-cache` (revalidate ทุกครั้ง) แทน cache 1 ปี (ดู [4.2](#42-สิ่งที่-nginxconf-ทำอยู่ตอนนี้))
+- ตอน `install` `sw.js` precache ด้วย `new Request(url, { cache: 'reload' })` ซึ่งข้าม HTTP cache ของเบราว์เซอร์ → cache ชุดใหม่ถูกเติมด้วยไฟล์ที่อยู่บนเซิร์ฟเวอร์ขณะนั้นเสมอ
+
+แต่ service worker ยังเป็น **cache-first** — การ revalidate ข้างบนไม่ได้ทำให้เครื่องที่ติดตั้งแล้วโหลดไฟล์ใหม่เอง **ยังต้อง bump `CACHE_NAME` ทุก release ที่ไฟล์ frontend เปลี่ยน** ไม่เช่นนั้นเครื่องเดิมจะใช้ชุดเก่าใน cache ต่อไป
+
+> ⚠️ อย่าแนะนำให้ผู้ใช้ "ล้างข้อมูลเว็บไซต์" เพื่อแก้หน้าเก่า — ข้อมูลร้านทั้งหมด (สินค้า, การขาย, ลูกหนี้) อยู่ใน `localStorage` ของเบราว์เซอร์นั้นเท่านั้น การล้างข้อมูลเว็บไซต์จะลบข้อมูลทิ้งด้วย ถ้าผู้ใช้ยังเห็นหน้าเก่า ให้ตรวจว่า bump `CACHE_NAME` แล้วและ image frontend ถูก build ใหม่ ([10.2](#102-การแก้ไขปัญหา)) จากนั้นให้ปิดแท็บ/แอปทั้งหมดแล้วเปิดใหม่ (หรือโหลดหน้าใหม่สองครั้ง)
 
 ---
 
@@ -642,7 +651,7 @@ Secrets / การตั้งค่าที่ต้องมี:
 | หลัง `/restore` ข้อมูลร้านหายหมด | เซิร์ฟเวอร์รันโค้ดก่อน `7ab1281` และส่งไฟล์จาก `/backup` ทั้งก้อน (เหมือนตัวอย่างใน USER_GUIDE.md) แทนที่จะส่ง `.data` | กู้จากไฟล์ SQLite/สำรองอื่น — ครั้งต่อไปใช้ `jq '.data'` ตาม [7.3](#73-api-apiv1syncbackup-และ-restore) |
 | แถบสถานะขึ้น "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" | `HEAD /api/v1/sync/health` ได้ 5xx หรือ network error (nginx ส่งต่อไม่ถึง backend) | `docker compose ps`, `docker compose logs backend`, `curl -I http://localhost:8080/api/v1/sync/health` |
 | กล้องสแกนไม่ทำงาน / ติดตั้ง PWA ไม่ได้ | เข้าผ่าน `http://<IP>` ไม่ใช่ secure context | ใช้ HTTPS ตาม [หัวข้อ 4](#4-https-และ-reverse-proxy) |
-| deploy แล้วผู้ใช้ยังเห็นหน้าเก่า | ไม่ได้ bump `CACHE_NAME` และ/หรือ HTTP cache 1 ปีของ `.js`/`.css` | bump `CACHE_NAME`; แก้ `nginx.conf` ให้ `/sw.js` ใช้ `location = /sw.js` (exact match ชนะ regex) และลดอายุ cache ของ `.js`/`.css` หรือเติม `?v=` ให้ไฟล์ใน `index.html` |
+| deploy แล้วผู้ใช้ยังเห็นหน้าเก่า | ไม่ได้ bump `CACHE_NAME` (service worker เป็น cache-first) หรือไม่ได้ build image frontend ใหม่ | bump `CACHE_NAME` ใน `sw.js` แล้ว `docker compose build frontend && docker compose up -d frontend`; ตรวจด้วย `curl -sI https://pos.example.com/sw.js` ว่าได้ `Cache-Control: no-cache, no-store, must-revalidate` และ `/script-pos.js` ได้ `Cache-Control: no-cache` จากนั้นให้ผู้ใช้ปิดแอปทุกแท็บแล้วเปิดใหม่ — **ห้ามล้างข้อมูลเว็บไซต์** (ข้อมูลร้านอยู่ใน `localStorage`, ดู [8](#8-ออกเวอร์ชันใหม่ของ-frontend-service-worker)) |
 | WebSocket ต่อไม่ติดผ่านพอร์ต 8080 | `nginx.conf` ไม่ส่ง `Upgrade`/`Connection` และไม่ proxy `/ws` | ต่อพอร์ต 8000 ตรง หรือเพิ่ม location ตาม [4.3](#43-วาง-tls-ไว้ข้างหน้า-แนะนำ) |
 | CORS error ในเบราว์เซอร์ | origin ของหน้าเว็บไม่อยู่ใน `CORS_ORIGINS` | ใช้ origin เดียวกันผ่าน nginx `/api/` (ไม่ต้อง CORS) หรือเพิ่ม origin |
 | `database is locked` | มีหลาย process เขียน SQLite พร้อมกัน (เช่น รัน backend ซ้อนสองตัว) | รัน backend instance เดียวต่อไฟล์ DB, หยุด process ที่ค้าง |
