@@ -25,8 +25,9 @@ class PurchaseService:
         return f"PO-{ts}-{random.randint(1000, 9999)}"
 
     def _calculate_total(self, items: List[PurchaseItemCreate]) -> Decimal:
-        """Calculate total from items."""
-        return sum(item.line_total for item in items)
+        """Calculate total from items (unit_cost * quantity — same as each item's
+        line_total; don't trust the optional client-sent line_total, default 0)."""
+        return sum(item.unit_cost * item.quantity for item in items)
 
     async def create(self, data: PurchaseCreate, store_id: int = 1) -> Purchase:
         """Create new purchase order."""

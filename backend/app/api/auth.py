@@ -1,6 +1,6 @@
 """Auth routes — register, login, refresh, API keys, user management."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
@@ -26,6 +26,7 @@ from app.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
+from app.api.validation import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.config import settings
 from app.database import get_db
 from app.models import User
@@ -326,8 +327,8 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(DEFAULT_PAGE, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):

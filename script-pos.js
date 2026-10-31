@@ -2,10 +2,19 @@
 // DATA STORE
 // ══════════════
 let _storageWarned = false;
+// แต่ละร้านมี namespace ของตัวเองใน localStorage — ร้าน 1 ใช้ prefix เดิม 'qpos_'
+// เพื่อให้ข้อมูลที่มีอยู่ก่อนเป็นของร้าน 1 โดยไม่ต้อง migrate
+const storePrefix = id => id === 1 ? 'qpos_' : `qpos_s${id}_`;
+const getGlobal = (k, d) => { try { return JSON.parse(localStorage.getItem('qpos_'+k)) ?? d; } catch { return d; } };
+const setGlobal = (k, v) => { try { localStorage.setItem('qpos_'+k, JSON.stringify(v)); } catch {} };
+let stores = getGlobal('stores', [{ id: 1, name: 'ร้านหลัก' }]);
+let currentStoreId = getGlobal('currentStore', 1);
+if (!stores.some(s => s.id === currentStoreId)) currentStoreId = 1;
+const STORE_PREFIX = storePrefix(currentStoreId);
 const DB = {
-  get: (k, d=[]) => { try { return JSON.parse(localStorage.getItem('qpos_'+k)) ?? d; } catch { return d; } },
+  get: (k, d=[]) => { try { return JSON.parse(localStorage.getItem(STORE_PREFIX+k)) ?? d; } catch { return d; } },
   set: (k, v) => {
-    try { localStorage.setItem('qpos_'+k, JSON.stringify(v)); return true; }
+    try { localStorage.setItem(STORE_PREFIX+k, JSON.stringify(v)); return true; }
     catch (err) {
       if (!_storageWarned) {
         _storageWarned = true;
@@ -183,10 +192,16 @@ let posCurrentCat = '';
 // ═══════════════════════════════════════════════
 // UTILS
 // ═══════════════════════════════════════════════
+// ไอคอน SVG จาก sprite ใน index.html (#i-<name>, Lucide)
+const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const fmt = n => '฿' + (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN= n => (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const ymd  = d => { const x=new Date(d); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const today= ()=> ymd(new Date());
+// วันที่ (YYYY-MM-DD ตามเวลาเครื่อง) ของค่าที่เป็น ISO timestamp เช่น sale.date; ค่าที่เป็น YYYY-MM-DD อยู่แล้วใช้ตามนั้น
+// (ห้าม slice ISO ตรง ๆ เพราะเป็นเวลา UTC — ขายตอน 00:00–07:00 ที่ไทยจะไปตกเป็นวันก่อนหน้า)
+// ค่าที่ parse ไม่ได้ (เช่นข้อมูลเสีย) ใช้ 10 ตัวแรกแทน — ห้าม throw เพราะ record เดียวจะทำให้รายงานทั้งหน้าพัง
+const localDay = v => { const s=String(v||''); return s.length>10 && !isNaN(new Date(s).getTime()) ? ymd(s) : s.slice(0,10); };
 const uid  = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const thDate= d=> d ? new Date(d).toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'}) : '-';
 const thTime= d=> d ? new Date(d).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -201,11 +216,14 @@ const save = ()=>{
   DB.set('cart', cart);
 };
 
+const TOAST_ICONS = { success: 'circle-check', error: 'circle-x', warning: 'triangle-alert', info: 'info' };
 function toast(msg, type='success') {
   const c = document.getElementById('toast-container');
   if (!c) { console.warn(msg); return; }
   const t = document.createElement('div');
-  t.className = `toast toast-${type}`; t.textContent = msg;
+  t.className = `toast toast-${type}`;
+  t.innerHTML = icon(TOAST_ICONS[type] || 'info');
+  t.append(' ' + msg);
   c.appendChild(t);
   setTimeout(()=>t.remove(), 2800);
 }
@@ -262,7 +280,7 @@ function renderMapping() {
   const visibleMapping = showHiddenMappings ? categoryMapping : categoryMapping.filter(m => !hiddenMappingPrefixes.includes(m.prefix));
   const toggleBar = hiddenCount ? `
     <div class="mapping-hidden-bar" onclick="showHiddenMappings=!showHiddenMappings;renderMapping()">
-      ${showHiddenMappings ? `🔽 ซ่อนรายการที่ซ่อนไว้ (${hiddenCount})` : `▶️ แสดงรายการที่ซ่อนไว้ (${hiddenCount})`}
+      ${showHiddenMappings ? `${icon('chevron-down')} ซ่อนรายการที่ซ่อนไว้ (${hiddenCount})` : `${icon('chevron-right')} แสดงรายการที่ซ่อนไว้ (${hiddenCount})`}
     </div>` : '';
   list.innerHTML = toggleBar + visibleMapping.map((m) => {
     const i = categoryMapping.indexOf(m);
@@ -270,10 +288,10 @@ function renderMapping() {
     return `
     <div class="mapping-row ${isHidden?'mapping-row-hidden':''}">
       <span class="m-prefix">${esc(m.prefix)}</span>
-      <span class="m-arrow">→</span>
+      <span class="m-arrow">${icon('arrow-right')}</span>
       <span class="m-cat">${esc(m.name)}</span>
-      <button class="btn-icon" title="${isHidden?'แสดงรายการนี้':'ซ่อนรายการนี้'}" data-action="toggle-hide" data-prefix="${esc(m.prefix)}">${isHidden?'🙈':'👁️'}</button>
-      ${m.locked ? '<span title="หมวดหมู่ทางการ ถาวร ลบไม่ได้" style="opacity:.6">🔒</span>' : `<button class="btn-icon" data-action="delete-mapping" data-index="${i}">✕</button>`}
+      <button class="btn-icon" title="${isHidden?'แสดงรายการนี้':'ซ่อนรายการนี้'}" data-action="toggle-hide" data-prefix="${esc(m.prefix)}">${icon(isHidden?'eye-off':'eye')}</button>
+      ${m.locked ? '<span title="หมวดหมู่ทางการ ถาวร ลบไม่ได้" style="opacity:.6">'+icon('lock')+'</span>' : `<button class="btn-icon" data-action="delete-mapping" data-index="${i}">${icon('x')}</button>`}
     </div>`;
   }).join('');
 }
@@ -309,7 +327,7 @@ function recalculateAllCategories() {
   save();
   renderMapping(); updateCategorySelects(); updateCatChips();
   renderProducts(); renderPosProducts();
-  toast(`ปรับปรุงหมวดหมู่สินค้าทั้งหมด ${products.length} รายการแล้ว ✓`);
+  toast(`ปรับปรุงหมวดหมู่สินค้าทั้งหมด ${products.length} รายการแล้ว`);
 }
 
 function addMapping() {
@@ -332,7 +350,7 @@ function addMapping() {
   renderPosProducts();
   document.getElementById('mapping-prefix').value = '';
   document.getElementById('mapping-cat').value = '';
-  toast(updated ? `เพิ่มการแม็พแล้ว ✓ (อัปเดตสินค้า ${updated} รายการ)` : 'เพิ่มการแม็พแล้ว ✓');
+  toast(updated ? `เพิ่มการแม็พแล้ว (อัปเดตสินค้า ${updated} รายการ)` : 'เพิ่มการแม็พแล้ว');
 }
 
 function deleteMapping(index) {
@@ -463,12 +481,12 @@ function setActiveNav(name) {
   if (fab) fab.style.display = name === 'pos' ? 'flex' : 'none';
 
   const titles = {
-    pos:'🛒 ขายสินค้า', products:'📦 สินค้า',
-    purchase:'🚚 สั่งซื้อ', debt:'💳 ลูกหนี้',
-    reports:'📊 รายงาน', more:'☰ เมนู'
+    pos:icon('shopping-cart')+' ขายสินค้า', products:icon('package')+' สินค้า',
+    purchase:icon('truck')+' สั่งซื้อ', debt:icon('credit-card')+' ลูกหนี้',
+    reports:icon('chart-column')+' รายงาน', more:icon('menu')+' เมนู'
   };
   const titleEl = document.getElementById('topbar-title');
-  if (titleEl) titleEl.textContent = titles[name] || '';
+  if (titleEl) titleEl.innerHTML = titles[name] || '';
 }
 
 // Runs the same per-page setup that showPage() used to run inline, now
@@ -489,7 +507,7 @@ function runPageInit(name) {
   if (name === 'products') {
     if (topAction) {
       topAction.style.display = 'inline-flex';
-      topAction.textContent = '+ เพิ่มสินค้า';
+      topAction.innerHTML = icon('plus') + ' เพิ่มสินค้า';
       topAction.onclick = ()=>openProductModal();
     }
     updateCategorySelects(); renderProducts();
@@ -497,7 +515,7 @@ function runPageInit(name) {
   if (name === 'purchase') {
     if (topAction) {
       topAction.style.display = 'inline-flex';
-      topAction.textContent = '+ บันทึกซื้อ';
+      topAction.innerHTML = icon('plus') + ' บันทึกซื้อ';
       topAction.onclick = ()=>openPurchaseModal();
     }
     renderPurchases();
@@ -505,7 +523,7 @@ function runPageInit(name) {
   if (name === 'debt') {
     if (topAction) {
       topAction.style.display = 'inline-flex';
-      topAction.textContent = '+ เพิ่ม';
+      topAction.innerHTML = icon('plus') + ' เพิ่ม';
       topAction.onclick = ()=>openDebtModal();
     }
     renderDebts();
@@ -531,14 +549,14 @@ function openMenu() {
   document.getElementById('sidebar-overlay').classList.add('open');
   const btn = document.getElementById('hamburger-btn');
   btn.setAttribute('aria-expanded', 'true');
-  btn.textContent = '×';
+  btn.innerHTML = icon('x');
 }
 function closeMenu() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-overlay').classList.remove('open');
   const btn = document.getElementById('hamburger-btn');
   btn.setAttribute('aria-expanded', 'false');
-  btn.textContent = '☰';
+  btn.innerHTML = icon('menu');
 }
 function navigateFromMenu(name) {
   closeMenu();
@@ -567,19 +585,88 @@ function saveSettings() {
   settings.lowStock = +document.getElementById('set-low-stock').value;
   settings.expiryDays = +document.getElementById('set-expiry-days').value;
   settings.vat = document.getElementById('set-vat').value;
-  save(); updateHeaderSubtitle(); toast('บันทึกแล้ว ✓');
+  save(); updateHeaderSubtitle(); toast('บันทึกแล้ว');
 }
 function updateHeaderSubtitle() {
   const el = document.getElementById('header-subtitle');
   if (!el) return;
   const parts = [settings.storeCode, settings.storeName].filter(Boolean);
-  el.textContent = parts.join(' · ');
+  if (stores.length > 1 && !parts.length) parts.push(currentStore().name);
+  el.innerHTML = (stores.length > 1 ? icon('store') + ' ' : '') + esc(parts.join(' · ')) + (stores.length > 1 ? ' ' + icon('chevron-down') : '');
+}
+
+// ═══════════════════════════════════════════════
+// STORES (แยกข้อมูลแต่ละร้านในเครื่อง)
+// ═══════════════════════════════════════════════
+function currentStore() { return stores.find(s => s.id === currentStoreId) || stores[0]; }
+// อ่านรายชื่อร้านจาก localStorage ใหม่ก่อนแก้ไข — อีกแท็บอาจเพิ่ม/ลบร้านไปแล้ว
+// (ถ้าใช้ค่าในหน่วยความจำของแท็บนี้แล้วเขียนทับ ร้านที่อีกแท็บเพิ่มจะหายไป)
+function reloadStores() {
+  const fresh = getGlobal('stores', stores);
+  if (Array.isArray(fresh) && fresh.length) stores = fresh;
+  return stores;
+}
+function openStoresModal() { closeMenu(); renderStores(); openModal('modal-stores'); }
+function renderStores() {
+  document.getElementById('store-list').innerHTML = stores.map(s => {
+    const active = s.id === currentStoreId;
+    return `<div class="store-row${active ? ' active' : ''}">
+      <div class="store-row-name">${active ? icon('check') + ' ' : ''}${esc(s.name)}</div>
+      ${active ? '<span class="badge badge-teal">ใช้งานอยู่</span>'
+               : `<button class="btn btn-primary btn-sm" onclick="switchStore(${s.id})">สลับ</button>`}
+      <button class="btn-icon" onclick="renameStore(${s.id})" title="เปลี่ยนชื่อ">${icon('pencil')}</button>
+      ${active || s.id === 1 ? '' : `<button class="btn-icon" onclick="deleteStore(${s.id})" title="ลบร้าน">${icon('trash-2')}</button>`}
+    </div>`;
+  }).join('');
+}
+function addStore() {
+  const name = (prompt('ชื่อร้านใหม่') || '').trim();
+  if (!name) return;
+  reloadStores();
+  const id = Math.max(...stores.map(s => s.id)) + 1;
+  stores.push({ id, name });
+  setGlobal('stores', stores);
+  // ร้านใหม่เริ่มว่าง ไม่ต้องใส่ข้อมูลตัวอย่าง
+  try { localStorage.setItem(storePrefix(id) + 'seeded', 'true'); } catch {}
+  try { localStorage.setItem(storePrefix(id) + 'settings', JSON.stringify({ ...settings, storeCode: '', storeName: name, storeAddr: '', storePhone: '', taxId: '' })); } catch {}
+  renderStores();
+  if (confirm(`เพิ่มร้าน "${name}" แล้ว สลับไปใช้ร้านนี้เลยไหม?`)) switchStore(id);
+}
+function renameStore(id) {
+  const cur = reloadStores().find(x => x.id === id); if (!cur) return;
+  const name = (prompt('ชื่อร้าน', cur.name) || '').trim();
+  if (!name) return;
+  const s = reloadStores().find(x => x.id === id); if (!s) return;
+  s.name = name;
+  setGlobal('stores', stores);
+  renderStores(); updateHeaderSubtitle();
+}
+function deleteStore(id) {
+  const s = reloadStores().find(x => x.id === id);
+  if (!s || id === 1 || id === currentStoreId) return;
+  if (!confirm(`ลบร้าน "${s.name}" และข้อมูลทั้งหมดของร้านนี้ในเครื่อง? (กู้คืนไม่ได้)`)) return;
+  const prefix = storePrefix(id);
+  Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
+  stores = reloadStores().filter(x => x.id !== id);
+  setGlobal('stores', stores);
+  renderStores(); updateHeaderSubtitle();
+  toast('ลบร้านแล้ว', 'warning');
+}
+function switchStore(id) {
+  if (id === currentStoreId) return;
+  if (cart.length && !confirm('มีสินค้าในตะกร้า ตะกร้าจะถูกเก็บไว้กับร้านปัจจุบัน สลับร้านต่อ?')) return;
+  save();
+  reloadStores();
+  if (!stores.some(s => s.id === id)) { renderStores(); toast('ไม่พบร้านนี้แล้ว (อาจถูกลบในแท็บอื่น)', 'warning'); return; }
+  setGlobal('stores', stores);
+  setGlobal('currentStore', id);
+  location.reload();
 }
 function openSetting() {
   navigateFromMenu('more');
 }
 function clearAllData() {
-  if (!confirm('⚠️ ล้างข้อมูลทั้งหมด?')) return;
+  if (!confirm(`ล้างข้อมูลทั้งหมดของร้าน "${currentStore().name}"? (ร้านอื่นไม่ถูกลบ)`)) return;
   products=[];sales=[];purchases=[];debts=[];expenses=[];holdBills=[];billCounter=1;
   save(); toast('ล้างข้อมูลแล้ว','warning'); showPage('pos');
 }
@@ -589,7 +676,7 @@ function clearAllData() {
 // ═══════════════════════════════════════════════
 function openProductModal(id=null) {
   editingProductId = id;
-  document.getElementById('prod-modal-title').textContent = id ? '✏️ แก้ไขสินค้า' : '+ เพิ่มสินค้า';
+  document.getElementById('prod-modal-title').innerHTML = id ? icon('pencil')+' แก้ไขสินค้า' : icon('plus')+' เพิ่มสินค้า';
   updateCategorySelects();
   populateProductTypeSelect('pm-type');
   if (id) {
@@ -654,7 +741,7 @@ function saveProduct() {
     if(idx!==-1){products[idx]=data;}
   } else products.push(data);
   save(); closeModal('modal-product'); renderProducts(); renderPosProducts();
-  toast(editingProductId?'แก้ไขแล้ว ✓':'เพิ่มสินค้าแล้ว ✓');
+  toast(editingProductId?'แก้ไขแล้ว':'เพิ่มสินค้าแล้ว');
 }
 function deleteProduct(id) {
   if (!confirm('ลบสินค้านี้?')) return;
@@ -687,7 +774,7 @@ function renderProducts() {
   nb.textContent=alerts; nb.style.display=alerts?'flex':'none';
 
   const c=document.getElementById('prod-list'); if(!c) return;
-  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
+  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('package')+'</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
 
   c.innerHTML=list.map(p=>{
     const stockCls=p.stock<=0?'stock-out':p.stock<=settings.lowStock?'stock-low':'stock-ok';
@@ -696,20 +783,20 @@ function renderProducts() {
     if(p.expiry){
       const exp=new Date(p.expiry);
       const cls=exp<new Date()?'expiry-danger':exp<=expWarn?'expiry-warn':'expiry-ok';
-      expiryTxt=`<div class="${cls}" style="font-size:11px;margin-top:3px">📅 ${thDate(p.expiry)}</div>`;
+      expiryTxt=`<div class="${cls}" style="font-size:11px;margin-top:3px">${icon('calendar')} ${thDate(p.expiry)}</div>`;
     }
     return `<div class="prod-list-item">
       <div class="pli-info">
         <div class="pli-name">${esc(p.name)}</div>
-        <div class="pli-meta">รหัส: <span class="pli-barcode">${esc(p.product_id||'-')}</span> · Barcode: ${esc(p.barcode||'-')} · ${esc(p.category||'-')}${p.type?` · 🏷️ ${esc(p.type)}`:''}</div>
+        <div class="pli-meta">รหัส: <span class="pli-barcode">${esc(p.product_id||'-')}</span> · Barcode: ${esc(p.barcode||'-')} · ${esc(p.category||'-')}${p.type?` · ${icon('tag')} ${esc(p.type)}`:''}</div>
         <div class="pli-price">${fmt(p.price)}</div>
         ${expiryTxt}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <span class="pli-stock ${stockCls}">${stockLabel}</span>
         <div style="display:flex;gap:6px">
-          <button class="btn-icon" onclick="openProductModal(${escJs(p.id)})">✏️</button>
-          <button class="btn-icon" onclick="deleteProduct(${escJs(p.id)})">🗑️</button>
+          <button class="btn-icon" onclick="openProductModal(${escJs(p.id)})">${icon('pencil')}</button>
+          <button class="btn-icon" onclick="deleteProduct(${escJs(p.id)})">${icon('trash-2')}</button>
         </div>
       </div>
     </div>`;
@@ -729,7 +816,7 @@ function renderPosProducts() {
     return p.name.toLowerCase().includes(q)||(p.product_id||'').includes(q)||(p.barcode||'').includes(q);
   });
   list.sort((a,b)=>(a.product_id||'').localeCompare(b.product_id||'',undefined,{numeric:true}));
-  if(!list.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🔍</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
+  if(!list.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">'+icon('search')+'</div><div class="empty-text">ไม่พบสินค้า</div></div>';return;}
   grid.innerHTML=list.map(p=>{
     const lowCls=p.stock<=0?'no-stock':p.stock<=settings.lowStock?'low-stock':'';
     return `<div class="product-card ${lowCls}" onclick="clickProduct(${escJs(p.id)})">
@@ -737,7 +824,7 @@ function renderPosProducts() {
       <div class="pc-product_id">รหัส: ${esc(p.product_id||'-')}</div>
       <div class="pc-barcode">Barcode: ${esc(p.barcode||'-')}</div>
       <div class="pc-price">${fmt(p.price)}</div>
-      <div class="pc-stock">${p.stock<=0?'❌ หมด':`📦 ${p.stock}`}</div>
+      <div class="pc-stock">${p.stock<=0?icon('circle-x')+' หมด':`${icon('package')} ${p.stock}`}</div>
     </div>`;
   }).join('');
 }
@@ -808,7 +895,7 @@ function renderCart() {
   const badge=document.getElementById('cart-bill-badge');
   if(badge) badge.textContent='บิล #B'+String(billCounter).padStart(5,'0');
   if(!cart.length){
-    list.innerHTML='<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-text">ยังไม่มีสินค้า</div></div>';
+    list.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('shopping-cart')+'</div><div class="empty-text">ยังไม่มีสินค้า</div></div>';
   } else {
     list.innerHTML=cart.map((item,i)=>`
       <div class="cart-item">
@@ -971,7 +1058,7 @@ function addDebtSale(){
   if(!cart.length){toast('ยังไม่มีสินค้า','warning');return;}
   creditSaleMode = true;
   editingDebtId = null;
-  document.getElementById('debt-modal-title').textContent = '💳 ขายเชื่อ';
+  document.getElementById('debt-modal-title').innerHTML = icon('credit-card')+' ขายเชื่อ';
   document.getElementById('dm-name').value = '';
   document.getElementById('dm-phone').value = '';
   const {total} = getCartTotal();
@@ -993,6 +1080,9 @@ function finalizeCreditSale(name,phone,note){
   sales.push(sale);
   debts.push({id:uid(),customer:name,phone,billNo,billId:sale.id,amount:total,paid:0,date:today(),note:note||sale.items.map(i=>i.name).join(', '),status:'ค้าง',payments:[]});
   save(); cart=[]; updateCartFab(); closeModal('cart-sheet'); renderPosProducts();
+  // เหมือน newBill(): ล้างส่วนลด และเลื่อนเลขบิลที่หัวหน้าขายไปบิลถัดไป
+  document.getElementById('cs-discount-val').value=0;
+  document.getElementById('pos-bill-no').textContent='บิล #B'+String(billCounter).padStart(5,'0');
   toast(`ขายเชื่อ ${name} ${fmt(total)}`,'info');
 }
 function holdCurrentCart(){
@@ -1044,7 +1134,7 @@ function addPurItem(){
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:flex-end">
       <div><label style="font-size:11px">จำนวน</label><input type="number" class="pr-qty" value="1" min="1" inputmode="numeric"></div>
       <div><label style="font-size:11px">ราคา/หน่วย</label><input type="number" class="pr-price" value="0" step="0.01" inputmode="decimal"></div>
-      <button class="btn-icon" style="margin-bottom:0" onclick="document.getElementById('pr-${id}').remove()">✕</button>
+      <button class="btn-icon" style="margin-bottom:0" onclick="document.getElementById('pr-${id}').remove()">${icon('x')}</button>
     </div>`;
   c.appendChild(d);
 }
@@ -1074,7 +1164,7 @@ function renderPurchases(){
   if(from) list=list.filter(x=>x.date>=from);
   if(to) list=list.filter(x=>x.date<=to);
   const c=document.getElementById('pur-list'); if(!c) return;
-  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">🚚</div><div class="empty-text">ไม่พบการสั่งซื้อ</div></div>';return;}
+  if(!list.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('truck')+'</div><div class="empty-text">ไม่พบการสั่งซื้อ</div></div>';return;}
   c.innerHTML=[...list].reverse().map(p=>{
     const total=p.items.reduce((s,i)=>s+i.total,0);
     return `<div class="pur-list-item">
@@ -1117,7 +1207,7 @@ function openDebtModal(id=null){
   editingDebtId=id;
   creditSaleMode=false;
   document.getElementById('dm-amount').readOnly=false;
-  document.getElementById('debt-modal-title').textContent=id?'✏️ แก้ไข':'+ เพิ่มลูกหนี้';
+  document.getElementById('debt-modal-title').innerHTML=id?icon('pencil')+' แก้ไข':icon('plus')+' เพิ่มลูกหนี้';
   if(id){
     const d=debts.find(x=>x.id===id); if(!d) return;
     document.getElementById('dm-name').value=d.customer;
@@ -1187,7 +1277,7 @@ function renderDebts(){
   document.getElementById('debt-outstanding').textContent=fmt(outstanding);
   document.getElementById('debt-bill-count').textContent=debts.filter(d=>d.status==='ค้าง').length;
   const c=document.getElementById('debt-list'); if(!c) return;
-  if(!debts.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">💳</div><div class="empty-text">ไม่มีลูกหนี้</div></div>';return;}
+  if(!debts.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">'+icon('credit-card')+'</div><div class="empty-text">ไม่มีลูกหนี้</div></div>';return;}
   c.innerHTML=debts.map(d=>{
     const out=d.amount-d.paid;
     const isPaid=d.status==='ชำระแล้ว';
@@ -1205,9 +1295,9 @@ function renderDebts(){
         <div class="debt-amount">${fmt(out)}</div>
       </div>
       <div class="debt-footer">
-        ${!isPaid?`<button class="btn btn-amber btn-sm" style="flex:1" onclick="openPayDebt(${escJs(d.id)})">💰 รับชำระ</button>`:''}
-        <button class="btn-icon" onclick="openDebtModal(${escJs(d.id)})">✏️</button>
-        <button class="btn-icon" onclick="deleteDebt(${escJs(d.id)})">🗑️</button>
+        ${!isPaid?`<button class="btn btn-amber btn-sm" style="flex:1" onclick="openPayDebt(${escJs(d.id)})">${icon('hand-coins')} รับชำระ</button>`:''}
+        <button class="btn-icon" onclick="openDebtModal(${escJs(d.id)})">${icon('pencil')}</button>
+        <button class="btn-icon" onclick="deleteDebt(${escJs(d.id)})">${icon('trash-2')}</button>
       </div>
     </div>`;
   }).join('');
@@ -1265,11 +1355,12 @@ function filterByDate(list,fromId,toId,df='date'){
   const from=document.getElementById(fromId)?.value;
   const to=document.getElementById(toId)?.value;
   return list.filter(x=>{
-    const raw=(x[df]||'').slice(0,10);
+    const raw=localDay(x[df]);
     if(!raw) return false;
     // Parse as local date (YYYY-MM-DD) to avoid timezone issues
     const parts=raw.split('-');
     const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
+    if(isNaN(d)) return false; // วันที่เสีย — ไม่นับเข้าช่วงใด (NaN เทียบแล้วได้ false ทุกครั้ง จะหลุดเข้าทุกช่วง)
     if(from){
       const fp=from.split('-');
       const fromDate=new Date(+fp[0], +fp[1]-1, +fp[2]);
@@ -1294,7 +1385,7 @@ function renderSalesReport(){
   document.getElementById('rs-avg').textContent=list.length?fmt(total/list.length):'฿0';
 
   const dayMap={};
-  list.forEach(s=>{const d=s.date.slice(0,10);dayMap[d]=(dayMap[d]||0)+s.total;});
+  list.forEach(s=>{const d=localDay(s.date);dayMap[d]=(dayMap[d]||0)+s.total;});
   const labels=Object.keys(dayMap).sort();
   const ctx=document.getElementById('salesChart');
   if(salesChartInst) salesChartInst.destroy();
@@ -1356,10 +1447,11 @@ function setCompareRange(mode){
 }
 function periodSummary(from,to){
   const list=sales.filter(s=>{
-    const raw=(s.date||'').slice(0,10);
+    const raw=localDay(s.date);
     if(!raw) return false;
     const parts=raw.split('-');
     const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
+    if(isNaN(d)) return false; // วันที่เสีย — ไม่นับเข้าช่วงใด (NaN เทียบแล้วได้ false ทุกครั้ง จะหลุดเข้าทุกช่วง)
     if(from){
       const fp=from.split('-');
       const fromDate=new Date(+fp[0], +fp[1]-1, +fp[2]);
@@ -1444,7 +1536,7 @@ function renderStockReport(){
         <div class="pli-meta">รหัส: ${esc(p.product_id||'-')} · Barcode: ${esc(p.barcode||'-')} · ${esc(p.category||'-')}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:3px;font-family:var(--mono)">ราคาขาย ${fmt(p.price)} · ทุน ${fmt(p.cost)} · มูลค่า ${fmt(p.stock*(p.cost||0))}</div>
       </div>
-      <span class="pli-stock ${stockCls}">${p.stock<=0?'หมด':p.stock<=settings.lowStock?`⚠️${p.stock}`:p.stock}</span>
+      <span class="pli-stock ${stockCls}">${p.stock<=0?'หมด':p.stock<=settings.lowStock?`${icon('triangle-alert')}${p.stock}`:p.stock}</span>
     </div>`;
   }).join('')||'<div class="empty-state"><div class="empty-text">ไม่มีสินค้า</div></div>';
 }
@@ -1583,7 +1675,13 @@ function importExcel(event) {
         const stock = (stockRaw!==undefined && stockRaw!=='') ? (parseInt(stockRaw)||0) : null;
         const expiryRaw = row['วันที่เริ่มจำหน่าย'] || row['วันหมดอายุ'] || '';
         let expiry = '';
-        if (expiryRaw) {
+        if (typeof expiryRaw === 'number') {
+          // เซลล์ชนิดวันที่ใน Excel อ่านออกมาเป็นเลข serial (เช่น 46461) ไม่ใช่ข้อความ
+          const dc = XLSX.SSF.parse_date_code(expiryRaw);
+          if (dc && dc.y > 1900) expiry = `${dc.y}-${String(dc.m).padStart(2,'0')}-${String(dc.d).padStart(2,'0')}`;
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(String(expiryRaw).trim())) {
+          expiry = String(expiryRaw).trim(); // YYYY-MM-DD ใช้ตามนั้น ไม่ผ่าน Date (กันวันเลื่อนตาม timezone)
+        } else if (expiryRaw) {
           const d = new Date(expiryRaw);
           if (!isNaN(d)) expiry = ymd(d);
         }
@@ -1626,7 +1724,7 @@ function importExcel(event) {
       renderPosProducts();
       updateCatChips();
       updateCategorySelects();
-      toast(`✅ นำเข้าแล้ว ${imported} รายการ (อัปเดต ${updated} รายการ)`, 'success');
+      toast(`นำเข้าแล้ว ${imported} รายการ (อัปเดต ${updated} รายการ)`, 'success');
     } catch (err) {
       toast('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'error');
       console.error(err);
@@ -1673,7 +1771,7 @@ function importMasterUpdate(event) {
       renderPosProducts();
       updateCatChips();
       updateCategorySelects();
-      toast(`✅ อัปเดตชื่อ+หมวดหมู่แล้ว ${updated} รายการ${notFound ? ` (ไม่พบสินค้า ${notFound} รายการ)` : ''}`, 'success');
+      toast(`อัปเดตชื่อ+หมวดหมู่แล้ว ${updated} รายการ${notFound ? ` (ไม่พบสินค้า ${notFound} รายการ)` : ''}`, 'success');
     } catch (err) {
       toast('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message, 'error');
       console.error(err);
@@ -1688,9 +1786,9 @@ function exportBackupJSON(){
   const backup={products,sales,purchases,debts,expenses,settings,holdBills,billCounter,categoryMapping,exportedAt:new Date().toISOString(),version:1};
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`qpos-backup-${today()}.json`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`qpos-backup-${currentStore().name.replace(/[\\/:*?"<>|\s]+/g,'_')}-${today()}.json`; a.click();
   URL.revokeObjectURL(url);
-  toast('สำรองข้อมูลแล้ว ✓');
+  toast('สำรองข้อมูลแล้ว');
 }
 function importBackupJSON(event){
   const file=event.target.files[0]; if(!file) return;
@@ -1698,14 +1796,14 @@ function importBackupJSON(event){
   reader.onload=e=>{
     try{
       const data=JSON.parse(e.target.result);
-      if(!confirm('⚠️ การกู้คืนจะแทนที่ข้อมูลทั้งหมดในเครื่องนี้ ดำเนินการต่อ?')){event.target.value='';return;}
+      if(!confirm(`การกู้คืนจะแทนที่ข้อมูลทั้งหมดของร้าน "${currentStore().name}" ในเครื่องนี้ (ร้านอื่นไม่ถูกแตะ) ดำเนินการต่อ?`)){event.target.value='';return;}
       products=data.products||[]; sales=data.sales||[]; purchases=data.purchases||[];
       debts=data.debts||[]; expenses=data.expenses||[]; settings=data.settings||settings;
       holdBills=data.holdBills||[]; billCounter=data.billCounter||1; categoryMapping=data.categoryMapping||categoryMapping;
       save();
       renderProducts(); renderPosProducts(); updateCatChips(); updateCategorySelects();
       renderMapping(); loadSettings();
-      toast('กู้คืนข้อมูลแล้ว ✓');
+      toast('กู้คืนข้อมูลแล้ว');
     }catch(err){
       toast('ไฟล์ไม่ถูกต้อง: '+err.message,'error');
     }
@@ -1741,49 +1839,108 @@ async function scanBarcodeFromPhoto(event) {
   }
 }
 
-// ── SCAN BARCODE ─────────────────────────────────
-async function scanBarcode() {
+// ── LIVE SCANNER (กล้องสด + ไฟฉาย + ซูม) ─────────
+let _scan = null; // { stream, track, raf, onCode }
+
+async function openLiveScanner(onCode) {
+  if (!('BarcodeDetector' in window)) {
+    toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่มถ่าย/เลือกรูปแทน', 'warning');
+    return;
+  }
+  stopScanner();
+  const video = document.getElementById('scanner-video');
+  const torchBtn = document.getElementById('scanner-torch');
+  const zoomWrap = document.getElementById('scanner-zoom-wrap');
+  const zoom = document.getElementById('scanner-zoom');
+  let stream = null;
+  // ผู้ใช้ปิดหน้าสแกน (Esc/ปิด/แตะพื้นหลัง) ระหว่างที่กล้องกำลังเริ่ม → ไม่ใช่ข้อผิดพลาด
+  const cancelled = () => !_scan || _scan.stream !== stream;
   try {
-    if (!('BarcodeDetector' in window)) {
-      toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'warning');
-      return;
-    }
     const detector = new BarcodeDetector();
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = document.createElement('video');
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const track = stream.getVideoTracks()[0];
+    _scan = { stream, track, raf: 0, onCode, torch: false };
     video.srcObject = stream;
-    video.setAttribute('playsinline', '');
-    video.style.width = '1px';
-    video.style.height = '1px';
-    video.style.position = 'absolute';
-    video.style.top = '-100px';
-    document.body.appendChild(video);
-    
+    openModal('modal-scanner');
     await video.play();
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    stream.getTracks().forEach(t => t.stop());
-    video.remove();
-    
-    const barcodes = await detector.detect(canvas);
-    if (barcodes.length > 0) {
-      const code = barcodes[0].rawValue;
-      document.getElementById('pos-search-input').value = code;
-      addFirstResult();
-      toast('พบ Barcode: ' + code, 'success');
+    if (cancelled()) return;
+
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    torchBtn.style.display = caps.torch ? '' : 'none';
+    torchBtn.classList.remove('active');
+    if (caps.zoom) {
+      const cur = track.getSettings().zoom ?? caps.zoom.min;
+      Object.assign(zoom, { min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1, value: cur });
+      zoomWrap.style.display = '';
     } else {
-      toast('ไม่พบบาร์โค้ดในภาพ', 'warning');
+      zoomWrap.style.display = 'none';
     }
+
+    let last = 0, busy = false;
+    const loop = async t => {
+      if (!_scan || _scan.stream !== stream) return;
+      _scan.raf = requestAnimationFrame(loop);
+      if (busy || t - last < 150 || video.readyState < 2) return;
+      last = t; busy = true;
+      try {
+        const codes = await detector.detect(video);
+        if (codes.length && _scan && _scan.stream === stream) {
+          const code = codes[0].rawValue;
+          navigator.vibrate?.(80);
+          stopScanner();
+          onCode(code);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        busy = false;
+      }
+    };
+    _scan.raf = requestAnimationFrame(loop);
   } catch (err) {
-    toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'error');
+    if (stream && cancelled()) { stream.getTracks().forEach(t => t.stop()); return; }
+    stopScanner();
+    toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่มถ่าย/เลือกรูปแทน', 'error');
     console.error(err);
   }
 }
 
+function stopScanner() {
+  if (_scan) {
+    cancelAnimationFrame(_scan.raf);
+    _scan.stream.getTracks().forEach(t => t.stop());
+    _scan = null;
+  }
+  const video = document.getElementById('scanner-video');
+  if (video) video.srcObject = null;
+  closeModal('modal-scanner');
+}
+
+async function toggleTorch() {
+  if (!_scan) return;
+  try {
+    await _scan.track.applyConstraints({ advanced: [{ torch: !_scan.torch }] });
+    _scan.torch = !_scan.torch;
+    document.getElementById('scanner-torch').classList.toggle('active', _scan.torch);
+  } catch (err) {
+    toast('เปิดไฟฉายไม่สำเร็จ', 'error');
+    console.error(err);
+  }
+}
+
+function setScannerZoom(value) {
+  if (!_scan) return;
+  _scan.track.applyConstraints({ advanced: [{ zoom: +value }] }).catch(err => console.error(err));
+}
+
+// ── SCAN BARCODE ─────────────────────────────────
+function scanBarcode() {
+  openLiveScanner(code => {
+    document.getElementById('pos-search-input').value = code;
+    addFirstResult();
+    toast('พบ Barcode: ' + code, 'success');
+  });
+}
 // ── SCAN BARCODE → ฟอร์มเพิ่ม/แก้ไขสินค้า ─────────
 async function scanBarcodeFromPhotoToProductForm(event) {
   const file = event.target.files[0];
@@ -1809,44 +1966,11 @@ async function scanBarcodeFromPhotoToProductForm(event) {
   }
 }
 
-async function scanBarcodeToProductForm() {
-  try {
-    if (!('BarcodeDetector' in window)) {
-      toast('เบราว์เซอร์นี้ไม่รองรับกล้องสด ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'warning');
-      return;
-    }
-    const detector = new BarcodeDetector();
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.setAttribute('playsinline', '');
-    video.style.width = '1px';
-    video.style.height = '1px';
-    video.style.position = 'absolute';
-    video.style.top = '-100px';
-    document.body.appendChild(video);
-
-    await video.play();
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    stream.getTracks().forEach(t => t.stop());
-    video.remove();
-
-    const barcodes = await detector.detect(canvas);
-    if (barcodes.length > 0) {
-      document.getElementById('pm-barcode').value = barcodes[0].rawValue;
-      toast('พบ Barcode: ' + barcodes[0].rawValue, 'success');
-    } else {
-      toast('ไม่พบบาร์โค้ดในภาพ', 'warning');
-    }
-  } catch (err) {
-    toast('เปิดกล้องสดไม่สำเร็จ ลองใช้ปุ่ม 🖼️ ถ่าย/เลือกรูปแทน', 'error');
-    console.error(err);
-  }
+function scanBarcodeToProductForm() {
+  openLiveScanner(code => {
+    document.getElementById('pm-barcode').value = code;
+    toast('พบ Barcode: ' + code, 'success');
+  });
 }
 
 // ═══════════════════════════════════════════════
@@ -1875,30 +1999,74 @@ function seedDemoData(){
 function initOnlineDetection() {
   const indicator = document.getElementById('offline-indicator');
   if (!indicator) return;
+  const text = indicator.querySelector('.offline-text');
 
-  function updateOnlineStatus() {
-    if (navigator.onLine) {
-      indicator.classList.add('hidden');
-      document.body.classList.remove('offline-active');
-    } else {
-      indicator.classList.remove('hidden');
-      document.body.classList.add('offline-active');
-    }
+  // null = ไม่รู้สถานะ/ไม่มี backend (เช่นเปิดผ่าน file://) → ไม่แจ้งเตือนเรื่องเซิร์ฟเวอร์
+  let serverReachable = null;
+  let wasOffline = !navigator.onLine;
+
+  function render() {
+    const offline = !navigator.onLine;
+    const serverDown = !offline && serverReachable === false;
+    if (offline) text.textContent = 'ออฟไลน์ — ข้อมูลยังบันทึกในเครื่องตามปกติ';
+    else if (serverDown) text.textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ข้อมูลบันทึกในเครื่อง';
+    indicator.classList.toggle('hidden', !offline && !serverDown);
+    indicator.classList.toggle('warn', serverDown);
+    document.body.classList.toggle('offline-active', offline || serverDown);
+    if (wasOffline && !offline) toast('กลับมาออนไลน์แล้ว', 'success');
+    wasOffline = offline;
   }
 
-  // Initial check
-  updateOnlineStatus();
-
-  // Listen for online/offline events
-  window.addEventListener('online', updateOnlineStatus);
-  window.addEventListener('offline', updateOnlineStatus);
-
-  // Periodic check (every 30 seconds) to catch cases where browser doesn't fire events
-  setInterval(() => {
+  function checkServer() {
+    if (location.protocol === 'file:' || !navigator.onLine) return render();
     fetch('/api/v1/sync/health', { method: 'HEAD', cache: 'no-store' })
-      .then(() => { if (!navigator.onLine) updateOnlineStatus(); })
-      .catch(() => { if (navigator.onLine) updateOnlineStatus(); });
-  }, 30000);
+      // 404/405/501 = static server ที่ไม่มี backend → ถือว่าไม่รู้สถานะ ไม่ใช่ล่ม
+      .then(res => { serverReachable = res.ok ? true : ([404, 405, 501].includes(res.status) ? null : false); })
+      .catch(() => { serverReachable = serverReachable === null ? null : false; })
+      .finally(render);
+  }
+
+  render();
+  checkServer();
+  window.addEventListener('online', checkServer);
+  window.addEventListener('offline', render);
+  // ตรวจซ้ำทุก 30 วินาที เผื่อเบราว์เซอร์ไม่ยิง event หรือเซิร์ฟเวอร์ล่ม
+  setInterval(checkServer, 30000);
+}
+
+// ═══════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════
+function closeTopModal() {
+  if (document.getElementById('modal-scanner').classList.contains('open')) return stopScanner();
+  const open = [...document.querySelectorAll('.modal-overlay.open')];
+  if (open.length) return closeModal(open[open.length - 1].id);
+  if (document.getElementById('cart-sheet').classList.contains('open')) return closeCartSheet();
+  if (document.getElementById('sidebar').classList.contains('open')) closeMenu();
+}
+function focusPosSearch() {
+  if (currentPage !== 'pos') showPage('pos');
+  const input = document.getElementById('pos-search-input');
+  input.focus(); input.select();
+}
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'Escape') { closeTopModal(); return; }
+    const typing = e.target.closest('input, textarea, select, [contenteditable="true"]');
+    // ปุ่ม F ใช้ได้แม้กำลังพิมพ์ในช่องค้นหา; ปุ่มตัวอักษรใช้ได้เฉพาะตอนไม่ได้พิมพ์
+    const actions = {
+      F2: focusPosSearch,
+      F4: openCartSheet,
+      F8: openPayment,
+      F9: holdCurrentCart,
+      ...(typing ? {} : { '/': focusPosSearch, '?': () => openModal('modal-shortcuts') }),
+    };
+    const fn = actions[e.key];
+    if (!fn) return;
+    e.preventDefault();
+    fn();
+  });
 }
 
 // ═══════════════════════════════════════════════
@@ -1910,6 +2078,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   setActiveNav(currentPage);
   runPageInit(currentPage);
   initOnlineDetection();
+  initKeyboardShortcuts();
 
   // ซ่อนปุ่ม "เพิ่มจากรายการสินค้ากลาง" ถ้าโปรเจกต์ไม่มีไฟล์ master-products.js
   if (typeof MASTER_PRODUCTS === 'undefined') {
@@ -1921,7 +2090,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const alerts=products.filter(p=>p.stock<=settings.lowStock||(p.expiry&&new Date(p.expiry)<=expWarn));
   const nb=document.getElementById('nav-alert-badge');
   if(nb){ nb.textContent=alerts.length; nb.style.display=alerts.length?'flex':'none'; }
-  if(alerts.length) setTimeout(()=>toast(`⚠️ ${alerts.length} รายการต้องตรวจสอบ`,'warning'),800);
+  if(alerts.length) setTimeout(()=>toast(`${alerts.length} รายการต้องตรวจสอบ`,'warning'),800);
 });
 
 function toggleMappingCard(){
