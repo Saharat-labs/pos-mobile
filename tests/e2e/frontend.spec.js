@@ -1151,6 +1151,49 @@ test('sales report counts a sale made shortly after midnight (Asia/Bangkok) as t
   assert.equal(await g(page, () => periodSummary(today(), today()).bills), 1, 'compare report uses local day');
 });
 
+test('a sale with a malformed date does not break the reports', async (s) => {
+  const page = await s.open();
+  await setStock(page, { [P1.barcode]: 2 });
+  await cashSale(page, [[P1, 1]], ['5', '0']);
+  await page.click('#modal-receipt button:has-text("บิลใหม่")');
+  // one corrupted record (long, unparsable date) next to a good one
+  await page.evaluate(() => { sales.push({ ...sales[0], id: 'bad', billNo: 'BBAD01', date: 'not-a-real-date-value' }); save(); });
+  await page.reload(); await ready(page);
+  await gotoPage(page, 'reports');
+  await page.click('#rtab-sales button:has-text("วันนี้")');
+  assert.equal(await page.textContent('#rs-bills'), '1', 'the valid sale is still counted');
+  assert.deepEqual(await g(page, () => salesChartInst.data.labels), [await g(page, () => today())]);
+  await page.click('button:has-text("7วันนี้ vs 7วันก่อน")');
+  assert.equal(await g(page, () => periodSummary(today(), today()).bills), 1);
+  assert.equal(await g(page, () => localDay('not-a-real-date-value')), 'not-a-real', 'falls back to the first 10 chars');
+});
+
+test('store list edits from a stale second tab do not drop stores added in another tab', async (s) => {
+  const ctx = await s.context();
+  const a = await s.open({ context: ctx });
+  const b = await s.open({ context: ctx });           // both tabs loaded stores = [ร้านหลัก]
+  const saved = () => g(a, () => JSON.parse(localStorage.getItem('qpos_stores')).map(x => `${x.id}:${x.name}`));
+
+  s.expectDialog(true, 'แท็บเอ'); s.expectDialog(false); // prompt name, decline "switch now?"
+  await g(a, () => addStore());
+  s.expectDialog(true, 'แท็บบี'); s.expectDialog(false);
+  await g(b, () => addStore());                          // b still holds the old list in memory
+  assert.deepEqual(await saved(), ['1:ร้านหลัก', '2:แท็บเอ', '3:แท็บบี'], 'b must not overwrite a\'s store or reuse its id');
+
+  s.expectDialog(true, 'แท็บเอ ใหม่');
+  await g(a, () => renameStore(2));                      // a does not know store 3 yet
+  assert.deepEqual(await saved(), ['1:ร้านหลัก', '2:แท็บเอ ใหม่', '3:แท็บบี']);
+
+  s.expectDialog(true);
+  await g(b, () => deleteStore(2));                      // b still has the old name in memory
+  assert.deepEqual(await saved(), ['1:ร้านหลัก', '3:แท็บบี']);
+
+  await g(a, () => switchStore(2));                      // deleted in the other tab: no reload, warning
+  await waitToast(a, /ไม่พบร้านนี้แล้ว/);
+  assert.equal(await g(a, () => currentStoreId), 1);
+  assert.deepEqual(await saved(), ['1:ร้านหลัก', '3:แท็บบี'], 'switching must not resurrect the deleted store');
+});
+
 test('file:// — index.html opened from disk loads and works without page errors', async (s) => {
   const ctx = await s.context({ permissions: [] });
   const page = await s.open({ context: ctx, url: FILE_URL });
@@ -1195,15 +1238,16 @@ test('file:// — index.html opened from disk loads and works without page error
     const s = new Session();
     const t0 = Date.now();
     let err = null;
+    let timer = null;
     try {
       await Promise.race([
         t.fn(s),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('test timed out after 90s')), 90000)),
+        new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('test timed out after 90s')), 90000); }),
       ]);
       if (s.pageErrors.length) throw new Error('uncaught page error(s):\n        ' + s.pageErrors.join('\n        '));
       if (s.consoleErrors.length) throw new Error('console error(s):\n        ' + s.consoleErrors.join('\n        '));
       if (s.dialogPlan.length) throw new Error(`${s.dialogPlan.length} expected dialog(s) never appeared`);
-    } catch (e) { err = e; }
+    } catch (e) { err = e; } finally { clearTimeout(timer); }
     await s.close();
     const ms = Date.now() - t0;
     if (err) { failed++; console.log(`FAIL  ${t.name} (${ms}ms)\n      ${(err.stack || String(err)).split('\n').slice(0, 6).join('\n      ')}`); }

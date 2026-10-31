@@ -200,7 +200,8 @@ const ymd  = d => { const x=new Date(d); return new Date(x.getTime()-x.getTimezo
 const today= ()=> ymd(new Date());
 // วันที่ (YYYY-MM-DD ตามเวลาเครื่อง) ของค่าที่เป็น ISO timestamp เช่น sale.date; ค่าที่เป็น YYYY-MM-DD อยู่แล้วใช้ตามนั้น
 // (ห้าม slice ISO ตรง ๆ เพราะเป็นเวลา UTC — ขายตอน 00:00–07:00 ที่ไทยจะไปตกเป็นวันก่อนหน้า)
-const localDay = v => { const s=String(v||''); return s.length>10 ? ymd(s) : s.slice(0,10); };
+// ค่าที่ parse ไม่ได้ (เช่นข้อมูลเสีย) ใช้ 10 ตัวแรกแทน — ห้าม throw เพราะ record เดียวจะทำให้รายงานทั้งหน้าพัง
+const localDay = v => { const s=String(v||''); return s.length>10 && !isNaN(new Date(s).getTime()) ? ymd(s) : s.slice(0,10); };
 const uid  = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const thDate= d=> d ? new Date(d).toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'}) : '-';
 const thTime= d=> d ? new Date(d).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -598,6 +599,13 @@ function updateHeaderSubtitle() {
 // STORES (แยกข้อมูลแต่ละร้านในเครื่อง)
 // ═══════════════════════════════════════════════
 function currentStore() { return stores.find(s => s.id === currentStoreId) || stores[0]; }
+// อ่านรายชื่อร้านจาก localStorage ใหม่ก่อนแก้ไข — อีกแท็บอาจเพิ่ม/ลบร้านไปแล้ว
+// (ถ้าใช้ค่าในหน่วยความจำของแท็บนี้แล้วเขียนทับ ร้านที่อีกแท็บเพิ่มจะหายไป)
+function reloadStores() {
+  const fresh = getGlobal('stores', stores);
+  if (Array.isArray(fresh) && fresh.length) stores = fresh;
+  return stores;
+}
 function openStoresModal() { closeMenu(); renderStores(); openModal('modal-stores'); }
 function renderStores() {
   document.getElementById('store-list').innerHTML = stores.map(s => {
@@ -614,6 +622,7 @@ function renderStores() {
 function addStore() {
   const name = (prompt('ชื่อร้านใหม่') || '').trim();
   if (!name) return;
+  reloadStores();
   const id = Math.max(...stores.map(s => s.id)) + 1;
   stores.push({ id, name });
   setGlobal('stores', stores);
@@ -624,20 +633,21 @@ function addStore() {
   if (confirm(`เพิ่มร้าน "${name}" แล้ว สลับไปใช้ร้านนี้เลยไหม?`)) switchStore(id);
 }
 function renameStore(id) {
-  const s = stores.find(x => x.id === id); if (!s) return;
-  const name = (prompt('ชื่อร้าน', s.name) || '').trim();
+  const cur = reloadStores().find(x => x.id === id); if (!cur) return;
+  const name = (prompt('ชื่อร้าน', cur.name) || '').trim();
   if (!name) return;
+  const s = reloadStores().find(x => x.id === id); if (!s) return;
   s.name = name;
   setGlobal('stores', stores);
   renderStores(); updateHeaderSubtitle();
 }
 function deleteStore(id) {
-  const s = stores.find(x => x.id === id);
+  const s = reloadStores().find(x => x.id === id);
   if (!s || id === 1 || id === currentStoreId) return;
   if (!confirm(`ลบร้าน "${s.name}" และข้อมูลทั้งหมดของร้านนี้ในเครื่อง? (กู้คืนไม่ได้)`)) return;
   const prefix = storePrefix(id);
   Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
-  stores = stores.filter(x => x.id !== id);
+  stores = reloadStores().filter(x => x.id !== id);
   setGlobal('stores', stores);
   renderStores(); updateHeaderSubtitle();
   toast('ลบร้านแล้ว', 'warning');
@@ -646,6 +656,8 @@ function switchStore(id) {
   if (id === currentStoreId) return;
   if (cart.length && !confirm('มีสินค้าในตะกร้า ตะกร้าจะถูกเก็บไว้กับร้านปัจจุบัน สลับร้านต่อ?')) return;
   save();
+  reloadStores();
+  if (!stores.some(s => s.id === id)) { renderStores(); toast('ไม่พบร้านนี้แล้ว (อาจถูกลบในแท็บอื่น)', 'warning'); return; }
   setGlobal('stores', stores);
   setGlobal('currentStore', id);
   location.reload();
@@ -1348,6 +1360,7 @@ function filterByDate(list,fromId,toId,df='date'){
     // Parse as local date (YYYY-MM-DD) to avoid timezone issues
     const parts=raw.split('-');
     const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
+    if(isNaN(d)) return false; // วันที่เสีย — ไม่นับเข้าช่วงใด (NaN เทียบแล้วได้ false ทุกครั้ง จะหลุดเข้าทุกช่วง)
     if(from){
       const fp=from.split('-');
       const fromDate=new Date(+fp[0], +fp[1]-1, +fp[2]);
@@ -1438,6 +1451,7 @@ function periodSummary(from,to){
     if(!raw) return false;
     const parts=raw.split('-');
     const d=new Date(+parts[0], +parts[1]-1, +parts[2]);
+    if(isNaN(d)) return false; // วันที่เสีย — ไม่นับเข้าช่วงใด (NaN เทียบแล้วได้ false ทุกครั้ง จะหลุดเข้าทุกช่วง)
     if(from){
       const fp=from.split('-');
       const fromDate=new Date(+fp[0], +fp[1]-1, +fp[2]);
@@ -1782,7 +1796,7 @@ function importBackupJSON(event){
   reader.onload=e=>{
     try{
       const data=JSON.parse(e.target.result);
-      if(!confirm('การกู้คืนจะแทนที่ข้อมูลทั้งหมดในเครื่องนี้ ดำเนินการต่อ?')){event.target.value='';return;}
+      if(!confirm(`การกู้คืนจะแทนที่ข้อมูลทั้งหมดของร้าน "${currentStore().name}" ในเครื่องนี้ (ร้านอื่นไม่ถูกแตะ) ดำเนินการต่อ?`)){event.target.value='';return;}
       products=data.products||[]; sales=data.sales||[]; purchases=data.purchases||[];
       debts=data.debts||[]; expenses=data.expenses||[]; settings=data.settings||settings;
       holdBills=data.holdBills||[]; billCounter=data.billCounter||1; categoryMapping=data.categoryMapping||categoryMapping;

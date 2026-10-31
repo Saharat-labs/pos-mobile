@@ -1,5 +1,5 @@
 // POS-MOBILE Service Worker
-const CACHE_NAME = 'pos-mobile-v2';
+const CACHE_NAME = 'pos-mobile-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -8,10 +8,14 @@ const ASSETS = [
   './manifest.json',
 ];
 
-// Install: cache core assets
+// Install: cache core assets. cache: 'reload' bypasses the browser HTTP cache
+// so a new CACHE_NAME is always filled with the files currently on the server
+// (never a stale script-pos.js/style-pos.css next to a fresh index.html).
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))
+    )
   );
   self.skipWaiting();
 });
