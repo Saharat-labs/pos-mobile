@@ -69,7 +69,7 @@ python run.py            # เริ่มที่ http://0.0.0.0:8000
 
 > 💡 `DATA_DIR` มีค่า default เป็น `~/pos-mobile-data` (บน Termux คือ `/data/data/com.termux/files/home/pos-mobile-data`) — `run.py` จะสร้างโฟลเดอร์นี้ให้ตอนเริ่ม ตั้งค่าอื่นได้ผ่าน `DATA_DIR` ใน `.env`
 >
-> 💡 ควรรัน `alembic upgrade head` ก่อนเริ่มครั้งแรกเสมอ เพราะตอน start `init_db()` สร้างเฉพาะตาราง ไม่สร้างร้านเริ่มต้น
+> 💡 ควรรัน `alembic upgrade head` ก่อนเริ่มครั้งแรกเสมอ — ตอน start `init_db()` จะ `create_all` ตารางและสร้างร้านเริ่มต้น id=1 (`STORE001`) ถ้ายังไม่มีร้าน แอปจึงใช้งานได้ แต่ `init_db()` **ไม่บันทึก `alembic_version`** ถ้า DB ถูกสร้างแบบนี้ต้อง `alembic stamp head` ก่อนรัน migration ถัดไป ไม่เช่นนั้น `alembic upgrade head` จะล้มด้วย `table ... already exists`
 
 ### 🧪 รันเทสต์
 
@@ -77,6 +77,26 @@ python run.py            # เริ่มที่ http://0.0.0.0:8000
 cd backend
 python -m pytest tests/ -v
 ```
+
+### 🔥 Smoke test (ทดสอบกับเซิร์ฟเวอร์ที่รันอยู่จริง)
+
+`scripts/smoke_test.py` ยิง HTTP จริงไปที่ backend ที่รันอยู่ ตรวจทีละข้อแล้วพิมพ์ `PASS` / `FAIL` / `WARN`
+(docs/openapi, health `GET`/`HEAD`, auth, สินค้า, ขาย→ตัดสต๊อก/ยอดรวม/ขายเกินสต๊อก/เลขบิลไม่ซ้ำ,
+ใบสั่งซื้อ→รับของเพิ่มสต๊อก, sync, backup→restore) — มีข้อ `FAIL` จะ exit ไม่เป็น 0
+
+```bash
+cd backend
+python3 scripts/smoke_test.py --base-url http://localhost:8000
+# ถ้าเปิด AUTH_ENABLED=true และมีผู้ใช้แล้ว: เพิ่ม --username <user> --password <pass>
+# --strict = นับ WARN (ช่องว่าง frontend ↔ backend sync ที่รู้อยู่แล้ว) เป็น FAIL ด้วย
+```
+
+> ⚠️ ข้อ restore จะ **แทนที่ข้อมูลร้านปัจจุบัน** ด้วย backup ที่เพิ่งดาวน์โหลด — รันกับฐานข้อมูลทดลองเท่านั้น เช่น
+> `DATABASE_URL=sqlite+aiosqlite:////tmp/smoke.db PORT=8802 DEBUG=false python3 run.py`
+> แล้วใช้ `--base-url http://localhost:8802`
+>
+> 💡 ข้อ `sync: frontend export shape` ได้ `WARN` เสมอ เพราะ JSON จาก `exportBackupJSON()` ใน `script-pos.js`
+> ยังไม่ตรงกับ schema ของ `POST /api/v1/sync` (ต้องแปลงฟิลด์ก่อน)
 
 ### 📱 Termux (Android)
 
@@ -95,7 +115,7 @@ alembic revision -m "..."   # สร้าง revision ใหม่ (ตั้�
 
 หมายเหตุที่ตรวจจากโค้ด:
 - `alembic/env.py` ใช้ `sqlalchemy.url` จาก `alembic.ini` (`sqlite+aiosqlite:///./pos_mobile.db`) เป็นค่าตั้งต้น แต่ถ้าตั้งตัวแปรสภาพแวดล้อม `DATABASE_URL` จะใช้ค่านั้นแทน (ทั้ง offline/online) เช่น `DATABASE_URL=sqlite+aiosqlite:////data/pos_mobile.db alembic upgrade head` — อ่านจาก environment จริงเท่านั้น (ไม่อ่านไฟล์ `.env`)
-- `revision 003` สร้างร้านเริ่มต้น (`STORE001`) ให้ ส่วน `init_db()` ตอน start จะ `create_all` ตารางเท่านั้น ไม่สร้างร้าน — ถ้าเริ่มจาก DB เปล่าโดยไม่รัน `alembic upgrade head` การเรียก endpoint ที่ผูกกับร้านจะได้ `404 Store not found for current user` (ทดสอบแล้ว) `backend/Dockerfile` จึงรัน `alembic upgrade head` ก่อน `python run.py` ให้อัตโนมัติ
+- `revision 003` สร้างร้านเริ่มต้น (`STORE001`) ให้ และ `init_db()` (`app/database.py`) ตอน start ก็ `create_all` ตารางแล้วสร้างร้าน id=1 (`STORE001`) เมื่อตาราง `stores` ว่าง — จึงไม่ได้ `404 Store not found for current user` แม้เริ่มจาก DB เปล่าโดยไม่รัน alembic แต่ `init_db()` ไม่บันทึก `alembic_version` DB แบบนั้นต้อง `alembic stamp head` (สำรองก่อน) ก่อน migration ถัดไป `backend/Dockerfile` จึงรัน `alembic upgrade head` ก่อน `python run.py` ให้อัตโนมัติ
 
 ## 🔌 Endpoints
 

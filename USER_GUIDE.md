@@ -91,25 +91,54 @@ chmod +x start_termux.sh
 termux-open index.html
 
 # วิธี B: ผ่าน nginx (แนะนำสำหรับ barcode scanner)
-# ตั้งค่า nginx ให้ serve โฟลเดอร์ pos-mobile
+# เสิร์ฟเฉพาะไฟล์ frontend ที่คัดลอกไว้ในโฟลเดอร์แยก — ดูหัวข้อถัดไป
 ```
 
-#### ตั้งค่า Nginx (สำหรับ Barcode Scanner HTTPS)
+#### ตั้งค่า Nginx (สำหรับ Barcode Scanner — `http://localhost` เป็น secure context)
+
+> ⚠️ **อย่าตั้ง `root` ไปที่โฟลเดอร์ repo (`~/pos-mobile`)** — nginx ฟังทุก interface จะเผย `.git/` และ `backend/.env` (มี secret) ให้ทุกเครื่องใน Wi-Fi เดียวกัน ให้คัดลอกเฉพาะไฟล์ frontend ไปโฟลเดอร์แยกแทน (หลักการเดียวกับ [docs/DEPLOYMENT.md §6.1](docs/DEPLOYMENT.md#61-systemd-บน-linux-server))
+
+```bash
+# 1. คัดลอกเฉพาะไฟล์ frontend (ทำซ้ำทุกครั้งหลัง git pull)
+mkdir -p ~/pos-web
+cd ~/pos-mobile
+cp index.html script-pos.js style-pos.css manifest.json sw.js ~/pos-web/
+cp -r icons ~/pos-web/
+
+# 2. สำรอง config เดิมของ Termux แล้วแทนที่ด้วยไฟล์ข้างล่าง
+#    ($PREFIX = /data/data/com.termux/files/usr → ไฟล์คือ /data/data/com.termux/files/usr/etc/nginx/nginx.conf)
+cp $PREFIX/etc/nginx/nginx.conf $PREFIX/etc/nginx/nginx.conf.bak
+nano $PREFIX/etc/nginx/nginx.conf
+```
+
 ```nginx
-# ~/.termux/files/usr/etc/nginx/nginx.conf
-server {
-    listen 8080;
-    server_name localhost;
-    root /data/data/com.termux/files/home/pos-mobile;
-    index index.html;
-    
-    location / {
-        try_files $uri $uri/ =404;
+# $PREFIX/etc/nginx/nginx.conf
+events {}
+http {
+    include mime.types;
+    server {
+        listen 8080;
+        server_name localhost;
+        root /data/data/com.termux/files/home/pos-web;   # โฟลเดอร์ที่คัดลอกไว้ ไม่ใช่ repo
+        index index.html;
+
+        # ชั้นป้องกันซ้อน (เหมือน nginx.conf ใน repo): ไม่เสิร์ฟไฟล์ซ่อนและ path ที่ไม่ใช่ frontend
+        location ~ /\. {
+            deny all;
+            return 404;
+        }
+        location ~ ^/(backend|backup|tests|docs|\.github)(/|$) {
+            return 404;
+        }
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
     }
 }
 ```
 ```bash
-nginx -c ~/.termux/files/usr/etc/nginx/nginx.conf
+nginx -t && nginx      # ใช้ $PREFIX/etc/nginx/nginx.conf โดยอัตโนมัติ (หยุดด้วย nginx -s stop)
 # เปิด http://localhost:8080
 ```
 
@@ -148,6 +177,18 @@ python run.py
 | **ลูกหนี้** | 💳 | จัดการลูกค้าซื้อเชื่อ - บันทึก/รับชำระ |
 | **รายงาน** | 📊 | ยอดขาย/สต๊อก/รายจ่าย - กราฟ/Export Excel |
 | **เพิ่มเติม/ตั้งค่า** | ⚙️ | ตั้งค่าร้าน/สำรองข้อมูล/นำเข้า-ส่งออก |
+| **สลับ / จัดการร้าน** | 🏪 | เพิ่ม/เปลี่ยนชื่อ/สลับ/ลบร้าน — ข้อมูลแต่ละร้านแยกกัน |
+
+#### 🏪 หลายร้านในเครื่องเดียว
+- เมนู ☰ → **🏪 สลับ / จัดการร้าน** → **➕ เพิ่มร้าน** (ร้านใหม่เริ่มว่าง)
+- สินค้า ยอดขาย ลูกหนี้ บิลพัก และการตั้งค่า แยกกันในแต่ละร้าน (เก็บใน localStorage ของเครื่องนี้ ยังไม่ซิงค์กับ backend)
+- เมื่อมีมากกว่า 1 ร้าน กดชื่อร้านใต้หัวแอป (🏪 ... ▾) เพื่อสลับได้เร็ว
+- ข้อมูลเดิมก่อนอัปเดตอยู่ใน "ร้านหลัก" — ร้านหลักและร้านที่ใช้งานอยู่ลบไม่ได้
+- สำรองข้อมูล (JSON) จะสำรองเฉพาะร้านที่ใช้งานอยู่
+
+#### 📶 แถบแจ้งเตือนการเชื่อมต่อ
+- 🔴 **ออฟไลน์** — ไม่มีอินเทอร์เน็ต แต่ขายและบันทึกข้อมูลในเครื่องได้ตามปกติ
+- 🟡 **เชื่อมต่อเซิร์ฟเวอร์ไม่ได้** — เปิดผ่าน backend แต่ backend ไม่ตอบ (ตรวจทุก 30 วินาที)
 
 ---
 
@@ -381,7 +422,7 @@ GET /api/v1/sales/summary/top-products?start_date=2024-01-01&end_date=2024-01-31
 
 #### Sync/Backup (สำคัญ!)
 ```bash
-# Sync จาก Frontend (localStorage) → Backend
+# Sync เข้า Backend — body ต้องเป็น schema ของ backend (ไม่ใช่ไฟล์สำรอง JSON ของ frontend ซึ่งจะได้ 422)
 POST /api/v1/sync
 {
   "products": [...],
@@ -414,45 +455,13 @@ POST /api/v1/sync/restore
 
 ---
 
-### วิธี Sync จาก Frontend
+### Frontend ยังไม่ซิงค์กับ Backend
 
-#### วิธีที่ 1: ผ่านหน้าตั้งค่า (GUI)
-```
-1. เปิดเมนู ☰ → "เพิ่มเติม/ตั้งค่า" (⚙️)
-2. เลื่อนลงหา "💾 สำรองข้อมูลทั้งหมด"
-3. กดปุ่ม → ระบบจะ POST ไป /api/v1/sync
-4. รอผลสำเร็จ → ข้อมูลอยู่ใน Backend แล้ว
-```
+> ⚠️ **ตอนนี้แอปหน้าร้านยังไม่มีปุ่มหรือขั้นตอนส่งข้อมูลไป backend** — ปุ่ม "💾 สำรองข้อมูลทั้งหมด" (เมนู ☰ และหน้า "เพิ่มเติม") แค่ **ดาวน์โหลดไฟล์ JSON** ไม่ได้ส่งไป `/api/v1/sync`
 
-#### วิธีที่ 2: ผ่าน JavaScript Console (สำหรับนักพัฒนา)
-```javascript
-// เปิด Developer Tools (F12) → Console → วางโค้ดนี้:
-
-async function syncAllData() {
-    const data = {
-        products: JSON.parse(localStorage.getItem('products') || '[]'),
-        sales: JSON.parse(localStorage.getItem('sales') || '[]'),
-        purchases: JSON.parse(localStorage.getItem('purchases') || '[]'),
-        debts: JSON.parse(localStorage.getItem('debts') || '[]'),
-        expenses: JSON.parse(localStorage.getItem('expenses') || '[]'),
-        stockMovements: JSON.parse(localStorage.getItem('stockMovements') || '[]'),
-        holdBills: JSON.parse(localStorage.getItem('holdBills') || '[]'),
-        settings: JSON.parse(localStorage.getItem('settings') || '[]'),
-        categoryMappings: JSON.parse(localStorage.getItem('categoryMappings') || '[]'),
-    };
-    
-    const res = await fetch('http://localhost:8000/api/v1/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    const result = await res.json();
-    console.log('✅ Sync result:', result);
-    alert(`Synced: ${JSON.stringify(result.counts)}`);
-}
-
-syncAllData();
-```
+- ข้อมูลอยู่ใน `localStorage` ของเบราว์เซอร์นี้เท่านั้น แยกต่อร้าน: ร้านหลัก (id 1) ใช้ key `qpos_*` (เช่น `qpos_products`, `qpos_sales`) ร้านอื่นใช้ `qpos_s<id>_*` (เช่น `qpos_s2_products`) ส่วนรายชื่อร้านอยู่ที่ `qpos_stores`
+- **วิธีกันข้อมูลหาย:** กด "สำรองข้อมูลทั้งหมด" เป็นประจำ แล้วเก็บไฟล์ `qpos-backup-<ชื่อร้าน>-<วันที่>.json` ไว้นอกเครื่อง กู้คืนด้วยปุ่ม "กู้คืนข้อมูล" ในหน้า "เพิ่มเติม" (แทนที่ข้อมูลของ **ร้านที่เลือกอยู่** เท่านั้น)
+- อย่าเอาไฟล์สำรองนี้ไป `POST /api/v1/sync` ตรง ๆ — `/sync` ของ backend ใช้ schema คนละแบบ (เช่น `code`, `customer_name`, `hold_bills`) ไฟล์จาก frontend จะถูกปฏิเสธ `422` ดู Known Issues ใน [TASKS.md](TASKS.md)
 
 ---
 
@@ -484,12 +493,17 @@ curl -X POST http://localhost:8000/api/v1/sync/restore \
 ### Frontend (เบราว์เซอร์)
 | ปุ่ม | ฟังก์ชัน |
 |-----|----------|
-| `Enter` | ค้นหา/ยืนยัน/เพิ่มสินค้า |
-| `Escape` | ปิด Modal/Sidebar |
-| `Ctrl+S` | บันทึก (ในฟอร์ม) |
-| `F11` | โหมดเต็มจอ |
-| `📷` | สแกนบาร์โค้ด (กล้อง) |
+| `F2` หรือ `/` | ไปที่ช่องค้นหาสินค้า (หน้าขาย) |
+| `Enter` | เพิ่มสินค้ารายการแรกที่ค้นเจอลงตะกร้า |
+| `F4` | เปิดตะกร้า |
+| `F8` | ชำระเงิน |
+| `F9` | พักบิล |
+| `Escape` | ปิด Modal/ตะกร้า/Sidebar (ปิดกล้องถ้ากำลังสแกน) |
+| `?` | แสดงหน้าต่างปุ่มลัด (หรือเมนู ☰ → ⌨️ ปุ่มลัดคีย์บอร์ด) |
+| `📷` | สแกนบาร์โค้ด (กล้องสด มีพรีวิว + 🔦 ไฟฉาย + 🔍 ซูม ถ้ากล้องรองรับ) |
 | `🖼️` | เลือกรูปบาร์โค้ด |
+
+> ปุ่ม `/` และ `?` ใช้ได้เมื่อไม่ได้พิมพ์อยู่ในช่องกรอกข้อมูล
 
 ### Backend (Terminal)
 | คำสั่ง | ฟังก์ชัน |
@@ -550,7 +564,7 @@ python -m pytest tests/ -v
 | ปัญหา | สาเหตุ | วิธีแก้ |
 |--------|--------|---------|
 | **Barcode scanner ไม่ทำงาน** | ต้องเป็น HTTPS หรือ localhost | ใช้ nginx + SSL หรือเข้าผ่าน localhost:8080 |
-| **ข้อมูลหายหลังรีโหลด** | localStorage ถูกล้าง | Sync ก่อนรีโหลด / ตั้งค่าเบราว์เซอร์ไม่ล้างข้อมูล |
+| **ข้อมูลหายหลังรีโหลด** | localStorage ถูกล้าง | กู้คืนจากไฟล์ "สำรองข้อมูลทั้งหมด" (JSON) ล่าสุด / ตั้งค่าเบราว์เซอร์ไม่ล้างข้อมูลเว็บไซต์ |
 | **UI แสดงผิดบนมือถือ** | Viewport/CSS | ตรวจสอบ `style-pos.css` media queries |
 | **ไม่สามารถพิมพ์ใบเสร็จ** | Print CSS | ตรวจสอบ `@media print` ใน CSS |
 

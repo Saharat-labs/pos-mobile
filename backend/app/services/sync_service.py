@@ -62,16 +62,36 @@ class SyncService:
             )
             for pid, pcode in rows.all():
                 code_to_id[pcode] = pid
+            # คงเลขบิลเดิมจาก backup ถ้ายังว่าง (bill_no unique ทั้งระบบ) ไม่งั้นออกเลขใหม่
+            wanted = [s.bill_no for s in data.sales if s.bill_no]
+            taken = set()
+            if wanted:
+                taken = set((await self.db.execute(
+                    select(Sale.bill_no).where(Sale.bill_no.in_(wanted))
+                )).scalars().all())
             for sale_data in data.sales:
                 for item in sale_data.items:
                     if item.product_code in code_to_id:
                         item.product_id = code_to_id[item.product_code]
-                await self.sales.create(sale_data, store_id=store_id, deduct_stock=False)
+                bill_no = sale_data.bill_no if sale_data.bill_no not in taken else None
+                if bill_no:
+                    taken.add(bill_no)
+                await self.sales.create(
+                    sale_data, store_id=store_id, deduct_stock=False, bill_no=bill_no
+                )
             counts["sales"] = len(data.sales)
 
         # Sync purchases
         if data.purchases:
+            # id สินค้าเปลี่ยนหลัง restore — ผูก purchase item ใหม่ด้วย product_code เหมือน sale
+            rows = await self.db.execute(
+                select(Product.id, Product.code).where(Product.store_id == store_id)
+            )
+            code_to_id = {pcode: pid for pid, pcode in rows.all()}
             for po_data in data.purchases:
+                for item in po_data.items:
+                    if item.product_code in code_to_id:
+                        item.product_id = code_to_id[item.product_code]
                 await self.purchases.create(po_data, store_id=store_id)
             counts["purchases"] = len(data.purchases)
 
@@ -277,6 +297,16 @@ class SyncService:
         transaction เดียวครอบทั้งกระบวนการไม่ได้)
         """
         # 1) validate payload ก่อนลบอะไรทั้งสิ้น — payload ผิดรูปต้องไม่ทำข้อมูลหาย
+        # รับได้ทั้งไฟล์ที่ได้จาก GET /sync/backup ({timestamp, version, data:{...}})
+        # และ data ด้านในโดยตรง; ถ้าไม่มี section ของ backup เลย (เช่น {} หรือไฟล์อื่น)
+        # ห้ามลบข้อมูลร้าน — เดิม SyncRequest ข้าม key ที่ไม่รู้จักแล้วได้ list ว่างทั้งหมด
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            data = data["data"]
+        if not isinstance(data, dict) or not set(data) & set(SyncRequest.model_fields):
+            raise ValueError(
+                "ไฟล์สำรองไม่ถูกต้อง: ไม่พบข้อมูล backup "
+                f"(ต้องมีอย่างน้อยหนึ่งใน {sorted(SyncRequest.model_fields)})"
+            )
         try:
             sync_request = SyncRequest(**data)
         except Exception as exc:

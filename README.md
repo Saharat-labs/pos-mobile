@@ -51,7 +51,7 @@
 ## 🏗️ สถาปัตยกรรม
 
 - **Frontend** (`index.html` + `script-pos.js`): อ่าน/เขียนข้อมูลผ่าน `localStorage` (key ขึ้นต้น `qpos_`) ทั้งหมด
-- **Backend** (`backend/`): REST API + WebSocket บน FastAPI/SQLite มี endpoint ครบสำหรับสินค้า ขาย สั่งซื้อ ลูกหนี้ รายจ่าย ฯลฯ รวมถึง `/api/v1/sync` สำหรับรับข้อมูลจาก localStorage
+- **Backend** (`backend/`): REST API + WebSocket บน FastAPI/SQLite มี endpoint ครบสำหรับสินค้า ขาย สั่งซื้อ ลูกหนี้ รายจ่าย ฯลฯ รวมถึง `/api/v1/sync` สำหรับรับข้อมูลจาก localStorage (แต่ schema ยังไม่ตรงกับไฟล์ export ของ frontend — ส่งตรง ๆ จะได้ 422, ดู Known Issues ใน [TASKS.md](TASKS.md))
 - **ที่ตรวจพบในโค้ด:** `script-pos.js` เรียก backend เพียงจุดเดียว คือ `fetch('/api/v1/sync/health', { method: 'HEAD' })` ทุก 30 วินาทีเพื่อตรวจสถานะออนไลน์ (`initOnlineDetection`) — ไม่มีการซิงก์หรือโหลดข้อมูลจาก API ดังนั้นการใช้งานจริงตอนนี้ยังเป็นแบบ localStorage ล้วน และ backend ยังไม่ได้ต่อกับหน้าเว็บ
 
 ## ✨ ฟีเจอร์หลัก
@@ -91,7 +91,7 @@
 | Service | Image / build | Port | หน้าที่ |
 |:---|:---|:---|:---|
 | `backend` | build จาก `./backend` (`backend/Dockerfile`) | `8000:8000` | FastAPI API, เก็บ SQLite ที่ volume `backend-data` (`/data/pos_mobile.db`), healthcheck `/api/v1/sync/health`; ตอนเริ่ม container จะรัน `alembic upgrade head` (สร้างตาราง + ร้านเริ่มต้น) แล้วจึงรัน `python run.py` |
-| `frontend` | `nginx:alpine` | `8080:80` | เสิร์ฟไฟล์ static จาก root ของ repo (mount ที่ `/usr/share/nginx/html`) ใช้ `nginx.conf`, ส่ง `/api/` ต่อไปที่ `backend:8000`, มี `/health` |
+| `frontend` | build จาก `nginx.Dockerfile` (`nginx:alpine`) | `8080:80` | เสิร์ฟเฉพาะไฟล์ frontend ที่ copy เข้า image ตอน build (ไม่ mount repo — แก้ไฟล์แล้วต้อง `docker compose build frontend`) ใช้ `nginx.conf`, ส่ง `/api/` ต่อไปที่ `backend:8000`, มี `/health` |
 | `backup` | build จาก `./backend` | - | ทำ backup ตาราง SQLite เป็น JSON ไปที่ `./backup` — เปิดเฉพาะเมื่อใช้ profile `backup` |
 
 ```bash
@@ -106,7 +106,23 @@ docker compose down                    # หยุด (ข้อมูลอย�
 หมายเหตุที่ตรวจจากไฟล์ตั้งค่า:
 - `nginx.conf` proxy เฉพาะ `/api/` — path WebSocket (`/ws`) ไม่ได้ถูก proxy ต้องต่อที่พอร์ต 8000 ตรง ๆ
 - ฐานข้อมูลของ backend อยู่ที่ `/data/pos_mobile.db` ใน volume `backend-data` เท่านั้น (ไม่มีการ mount ไฟล์ DB จาก host)
-- `nginx.Dockerfile` (image แบบ copy ไฟล์ static เข้า nginx) ไม่ได้ถูกอ้างถึงใน `docker-compose.yml`
+- `nginx.conf` ส่ง `sw.js` แบบ `no-cache, no-store` และ `.js`/`.css` แบบ `Cache-Control: no-cache` (revalidate ทุกครั้ง) — ออก release frontend ใหม่ต้อง bump `CACHE_NAME` ใน `sw.js` ([docs/DEPLOYMENT.md §8](docs/DEPLOYMENT.md#8-ออกเวอร์ชันใหม่ของ-frontend-service-worker))
+
+## 📚 เอกสาร / การทดสอบ
+
+| เอกสาร | เนื้อหา |
+|:---|:---|
+| [USER_GUIDE.md](USER_GUIDE.md) | คู่มือใช้งานหน้าร้าน, ติดตั้งบน Termux/คอมพิวเตอร์ |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | สถาปัตยกรรม, internals ของ frontend/backend, เพิ่มโมดูล/หน้าใหม่, API docs |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deploy production: docker compose, config, HTTPS, migration, backup, ออก release frontend |
+| [backend/README.md](backend/README.md) | endpoints, environment variables, การรัน backend |
+| [tests/e2e/README.md](tests/e2e/README.md) | ชุดทดสอบเบราว์เซอร์ (Playwright) |
+
+```bash
+tests/e2e/run.sh                         # E2E ของ frontend ใน Chromium (ต้องมี node + playwright, python3)
+cd backend && python3 -m pytest -q       # unit/API tests ของ backend
+python3 backend/scripts/smoke_test.py --base-url http://localhost:8000   # smoke test กับ backend ที่รันอยู่ (ใช้ DB ทดลองเท่านั้น — ขั้น restore จะแทนที่ข้อมูลร้าน)
+```
 
 ## 📦 Dependencies (โหลดผ่าน CDN + ตรวจสอบ SRI)
 

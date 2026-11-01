@@ -542,10 +542,15 @@ class StoreListResponse(BaseModel):
 
 # ==================== Sync/Backup Schemas ====================
 
+class SyncSaleCreate(SaleCreate):
+    """Sale in a sync/restore payload — keeps the original bill_no from the backup."""
+    bill_no: Optional[str] = Field(None, max_length=50)
+
+
 class SyncRequest(BaseModel):
     """Request to sync localStorage data to backend."""
     products: List[ProductCreate] = []
-    sales: List[SaleCreate] = []
+    sales: List[SyncSaleCreate] = []
     purchases: List[PurchaseCreate] = []
     debts: List[DebtCreate] = []
     expenses: List[ExpenseCreate] = []

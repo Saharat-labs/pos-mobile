@@ -89,6 +89,24 @@ class TestAuthFlow:
         assert "username" in resp.json()
 
     @pytest.mark.asyncio
+    async def test_list_users_pagination(self, client: AsyncClient):
+        """/auth/users รับ page/page_size ที่ถูกต้อง."""
+        resp = await client.get("/api/v1/auth/users", params={"page": 1, "page_size": 100})
+        assert resp.status_code == 200, resp.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("params", [
+        {"page_size": 101},
+        {"page_size": 0},
+        {"page": 0},
+        {"page": -1},
+    ])
+    async def test_list_users_rejects_bad_pagination(self, client: AsyncClient, params):
+        """/auth/users: page_size เกิน MAX_PAGE_SIZE หรือ page < 1 → 422."""
+        resp = await client.get("/api/v1/auth/users", params=params)
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
     async def test_api_works_without_token_in_dev(self, client: AsyncClient):
         """AUTH_ENABLED=false → เรียก API ได้โดยไม่ต้องมี token."""
         resp = await client.get("/api/v1/products")
